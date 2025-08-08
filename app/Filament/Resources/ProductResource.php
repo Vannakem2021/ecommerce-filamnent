@@ -30,7 +30,31 @@ class ProductResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-shopping-bag';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?string $navigationGroup = 'Product Management';
+
+    protected static ?int $navigationSort = 1;
+
+    public static function canViewAny(): bool
+    {
+        return auth()->user()->can('products.view');
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()->can('products.create');
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()->can('products.edit');
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()->can('products.delete');
+    }
+
+
 
     public static function form(Form $form): Form
     {
@@ -70,10 +94,11 @@ class ProductResource extends Resource
 
                         TextInput::make('sku')
                             ->label('SKU')
-                            ->required()
                             ->maxLength(255)
-                            ->columnSpanFull(),
-                            
+                            ->columnSpanFull()
+                            ->helperText('Leave empty to auto-generate from brand and product name')
+                            ->placeholder('Auto-generated if empty'),
+
                     ])->columns(2),
 
                     Section::make('Images')->schema([
@@ -84,8 +109,32 @@ class ProductResource extends Resource
                             ->reorderable()
                     ]),
 
+                    Section::make('Variants Configuration')->schema([
+                        Toggle::make('has_variants')
+                            ->label('Has Variants')
+                            ->helperText('Enable if this product has multiple variants (color, size, etc.)')
+                            ->live(),
+
+                        Select::make('variant_type')
+                            ->label('Variant Type')
+                            ->options([
+                                'none' => 'No Variants',
+                                'single' => 'Single Variant',
+                                'multiple' => 'Multiple Variants',
+                            ])
+                            ->default('none')
+                            ->visible(fn ($get) => $get('has_variants')),
+
+                        Select::make('variant_attributes')
+                            ->label('Variant Attributes')
+                            ->multiple()
+                            ->options(fn () => \App\Models\ProductAttribute::active()->pluck('name', 'id'))
+                            ->helperText('Select which attributes this product uses for variants')
+                            ->visible(fn ($get) => $get('has_variants')),
+                    ]),
+
                     Section::make('SEO Data')->schema([
-                        
+
                         TextInput::make('meta_title')
                             ->maxLength(255),
 
@@ -100,11 +149,61 @@ class ProductResource extends Resource
 
                 Group::make()->schema([
 
-                    Section::make('Price')->schema([
+                    Section::make('Pricing')->schema([
                         TextInput::make('price')
+                            ->label('Selling Price')
                             ->numeric()
                             ->required()
                             ->prefix('INR')
+                            ->step(0.01)
+                            ->helperText('Current selling price'),
+
+                        TextInput::make('compare_price')
+                            ->label('Compare Price')
+                            ->numeric()
+                            ->prefix('INR')
+                            ->step(0.01)
+                            ->helperText('Original/MSRP price for showing discounts'),
+
+                        TextInput::make('cost_price')
+                            ->label('Cost Price')
+                            ->numeric()
+                            ->prefix('INR')
+                            ->step(0.01)
+                            ->helperText('Cost price for profit calculations'),
+                    ]),
+
+                    Section::make('Inventory Management')->schema([
+                        TextInput::make('stock_quantity')
+                            ->label('Stock Quantity')
+                            ->numeric()
+                            ->required()
+                            ->default(0)
+                            ->minValue(0)
+                            ->helperText('Current stock quantity'),
+
+                        Select::make('stock_status')
+                            ->label('Stock Status')
+                            ->options([
+                                'in_stock' => 'In Stock',
+                                'out_of_stock' => 'Out of Stock',
+                                'back_order' => 'Back Order',
+                            ])
+                            ->required()
+                            ->default('in_stock'),
+
+                        TextInput::make('low_stock_threshold')
+                            ->label('Low Stock Threshold')
+                            ->numeric()
+                            ->required()
+                            ->default(5)
+                            ->minValue(0)
+                            ->helperText('Alert when stock falls below this number'),
+
+                        Toggle::make('track_inventory')
+                            ->label('Track Inventory')
+                            ->default(true)
+                            ->helperText('Enable inventory tracking for this product'),
                     ]),
 
                     Section::make('Associations')->schema([
@@ -158,8 +257,35 @@ class ProductResource extends Resource
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('price')
+                    ->label('Selling Price')
                     ->money('INR')
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('compare_price')
+                    ->label('Compare Price')
+                    ->money('INR')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('stock_quantity')
+                    ->label('Stock')
+                    ->sortable()
+                    ->badge()
+                    ->color(fn ($record) => $record->is_low_stock ? 'warning' : 'success'),
+
+                Tables\Columns\TextColumn::make('stock_status')
+                    ->label('Status')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'in_stock' => 'success',
+                        'out_of_stock' => 'danger',
+                        'back_order' => 'warning',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'in_stock' => 'In Stock',
+                        'out_of_stock' => 'Out of Stock',
+                        'back_order' => 'Back Order',
+                    }),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean(),
@@ -200,10 +326,42 @@ class ProductResource extends Resource
                     ->toggle(),
 
                 Filter::make('is_active')
+                    ->toggle(),
+
+                SelectFilter::make('stock_status')
+                    ->options([
+                        'in_stock' => 'In Stock',
+                        'out_of_stock' => 'Out of Stock',
+                        'back_order' => 'Back Order',
+                    ]),
+
+                Filter::make('low_stock')
+                    ->label('Low Stock')
+                    ->query(fn (Builder $query): Builder => $query->whereRaw('stock_quantity <= low_stock_threshold'))
+                    ->toggle(),
+
+                Filter::make('track_inventory')
                     ->toggle()
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('regenerate_sku')
+                        ->label('Regenerate SKU')
+                        ->icon('heroicon-o-arrow-path')
+                        ->color('warning')
+                        ->action(function ($record) {
+                            $oldSku = $record->sku;
+                            $record->regenerateSku();
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('SKU Regenerated')
+                                ->body("SKU updated from '{$oldSku}' to '{$record->sku}'")
+                                ->success()
+                                ->send();
+                        })
+                        ->requiresConfirmation()
+                        ->modalDescription('This will regenerate the SKU based on the current brand and product name. All variant SKUs will also be updated.'),
+
                     Tables\Actions\ViewAction::make(),
                     Tables\Actions\EditAction::make(),
                     Tables\Actions\DeleteAction::make()->requiresConfirmation(),
@@ -219,7 +377,7 @@ class ProductResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            RelationManagers\VariantsRelationManager::class,
         ];
     }
 

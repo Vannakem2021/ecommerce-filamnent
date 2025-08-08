@@ -1,4 +1,4 @@
-<div class="w-full max-w-[85rem] py-10 px-4 sm:px-6 lg:px-8 mx-auto">
+<div class="w-full max-w-[80rem] py-10 px-4 sm:px-6 lg:px-8 mx-auto">
     <div class="flex h-full items-center">
       <main class="w-full max-w-md mx-auto p-6">
         <div class="mt-7 bg-white border border-gray-200 rounded-xl shadow-sm dark:bg-gray-800 dark:border-gray-700">
@@ -12,7 +12,7 @@
                 </a>
               </p>
             </div>
-  
+
             <div class="mt-5">
               <!-- Form -->
               <form>

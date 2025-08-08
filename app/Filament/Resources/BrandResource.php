@@ -25,6 +25,26 @@ class BrandResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-bookmark-square';
 
+    public static function canViewAny(): bool
+    {
+        return auth()->user()->can('brands.view');
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()->can('brands.create');
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()->can('brands.edit');
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()->can('brands.delete');
+    }
+
     protected static ?string $recordTitleAttribute = 'name';
 
     protected static ?int $navigationSort = 3;
@@ -71,7 +91,7 @@ class BrandResource extends Resource
                 Tables\Columns\ImageColumn::make('image'),
 
                 Tables\Columns\TextColumn::make('slug')
-                    ->searchable(),                
+                    ->searchable(),
 
                 // Tables\Columns\IconColumn::make('is_active')
                 //     ->boolean(),

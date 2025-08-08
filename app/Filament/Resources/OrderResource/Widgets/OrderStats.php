@@ -9,6 +9,11 @@ use Illuminate\Support\Number;
 
 class OrderStats extends BaseWidget
 {
+    public static function canView(): bool
+    {
+        return auth()->user()->can('dashboard.view');
+    }
+
     protected function getStats(): array
     {
         return [
@@ -22,7 +27,7 @@ class OrderStats extends BaseWidget
 
             Stat::make('Cancelled Orders', Order::query()->where('status', 'cancelled')->count()),
 
-            Stat::make('Average Price', Number::currency(Order::query()->avg('grand_total'), 'INR')),
+            Stat::make('Average Price', Number::currency(Order::query()->avg('grand_total') ?? 0, 'INR')),
 
         ];
     }

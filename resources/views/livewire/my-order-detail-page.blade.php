@@ -1,6 +1,6 @@
-<div class="w-full max-w-[85rem] py-10 px-4 sm:px-6 lg:px-8 mx-auto">
+<div class="w-full max-w-[80rem] py-10 px-4 sm:px-6 lg:px-8 mx-auto">
     <h1 class="text-4xl font-bold text-slate-500">Order Details</h1>
-  
+
     <!-- Grid -->
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-5">
       <!-- Card -->
@@ -14,7 +14,7 @@
               <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
           </div>
-  
+
           <div class="grow">
             <div class="flex items-center gap-x-2">
               <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -28,7 +28,7 @@
         </div>
       </div>
       <!-- End Card -->
-  
+
       <!-- Card -->
       <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-slate-900 dark:border-gray-800">
         <div class="p-4 md:p-5 flex gap-x-4">
@@ -40,7 +40,7 @@
               <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
             </svg>
           </div>
-  
+
           <div class="grow">
             <div class="flex items-center gap-x-2">
               <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -56,7 +56,7 @@
         </div>
       </div>
       <!-- End Card -->
-  
+
       <!-- Card -->
       <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-slate-900 dark:border-gray-800">
         <div class="p-4 md:p-5 flex gap-x-4">
@@ -66,7 +66,7 @@
               <path d="m12 12 4 10 1.7-4.3L22 16Z" />
             </svg>
           </div>
-  
+
           <div class="grow">
             <div class="flex items-center gap-x-2">
               <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -80,7 +80,7 @@
         </div>
       </div>
       <!-- End Card -->
-  
+
       <!-- Card -->
       <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-slate-900 dark:border-gray-800">
         <div class="p-4 md:p-5 flex gap-x-4">
@@ -92,7 +92,7 @@
               <path d="M21 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2" />
             </svg>
           </div>
-  
+
           <div class="grow">
             <div class="flex items-center gap-x-2">
               <p class="text-xs uppercase tracking-wide text-gray-500">
@@ -108,7 +108,7 @@
       <!-- End Card -->
     </div>
     <!-- End Grid -->
-  
+
     <div class="flex flex-col md:flex-row gap-4 mt-4">
       <div class="md:w-3/4">
         <div class="bg-white overflow-x-auto rounded-lg shadow-md p-6 mb-4">
@@ -122,7 +122,7 @@
               </tr>
             </thead>
             <tbody>
-  
+
               <!--[if BLOCK]><![endif]-->
               <tr wire:key="53">
                 <td class="py-4">
@@ -151,11 +151,11 @@
                 <td class="py-4">₹375,000.00</td>
               </tr>
               <!--[if ENDBLOCK]><![endif]-->
-  
+
             </tbody>
           </table>
         </div>
-  
+
         <div class="bg-white overflow-x-auto rounded-lg shadow-md p-6 mb-4">
           <h1 class="font-3xl font-bold text-slate-500 mb-3">Shipping Address</h1>
           <div class="flex justify-between items-center">
@@ -168,7 +168,7 @@
             </div>
           </div>
         </div>
-  
+
       </div>
       <div class="md:w-1/4">
         <div class="bg-white rounded-lg shadow-md p-6">
@@ -190,7 +190,7 @@
             <span class="font-semibold">Grand Total</span>
             <span class="font-semibold">₹404,999.00</span>
           </div>
-  
+
         </div>
       </div>
     </div>

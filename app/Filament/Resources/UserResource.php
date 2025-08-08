@@ -22,6 +22,26 @@ class UserResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
 
+    public static function canViewAny(): bool
+    {
+        return auth()->user()->can('users.view');
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()->can('users.create');
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()->can('users.edit');
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()->can('users.delete');
+    }
+
     protected static ?string $recordTitleAttribute = 'name';
 
     protected static ?int $navigationSort = 1;

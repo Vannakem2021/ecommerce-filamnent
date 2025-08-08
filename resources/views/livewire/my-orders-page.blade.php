@@ -1,4 +1,4 @@
-<div class="w-full max-w-[85rem] py-10 px-4 sm:px-6 lg:px-8 mx-auto">
+<div class="w-full max-w-[80rem] py-10 px-4 sm:px-6 lg:px-8 mx-auto">
   <h1 class="text-4xl font-bold text-slate-500">My Orders</h1>
   <div class="flex flex-col bg-white p-5 rounded mt-4 shadow-lg">
     <div class="-m-1.5 overflow-x-auto">

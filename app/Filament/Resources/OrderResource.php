@@ -37,6 +37,26 @@ class OrderResource extends Resource
 
     protected static ?int $navigationSort = 5;
 
+    public static function canViewAny(): bool
+    {
+        return auth()->user()->can('orders.view');
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()->can('orders.create');
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()->can('orders.edit');
+    }
+
+    public static function canDelete($record): bool
+    {
+        return auth()->user()->can('orders.delete');
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -140,7 +160,7 @@ class OrderResource extends Resource
 
                                     ->afterStateUpdated(fn ($state, Set $set) => $set('total_amount', optional(Product::find($state))->price ?? 0)),
 
-                                
+
                                 TextInput::make('quantity')
                                     ->numeric()
                                     ->required()
@@ -149,14 +169,14 @@ class OrderResource extends Resource
                                     ->columnSpan(2)
                                     ->reactive()
                                     ->afterStateUpdated(fn ($state, Set $set, Get $get) => $set('total_amount', $state*$get('unit_amount'))),
-                                
+
                                 TextInput::make('unit_amount')
                                     ->numeric()
                                     ->required()
                                     ->disabled()
                                     ->dehydrated()
                                     ->columnSpan(3),
-                                
+
                                 TextInput::make('total_amount')
                                     ->numeric()
                                     ->required()
@@ -219,7 +239,7 @@ class OrderResource extends Resource
                 TextColumn::make('currency')
                     ->sortable()
                     ->searchable(),
-                
+
                 TextColumn::make('shipping_method')
                     ->label('Shipping Method')
                     ->sortable()
@@ -235,7 +255,7 @@ class OrderResource extends Resource
                     ])
                     ->searchable()
                     ->sortable(),
-                
+
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

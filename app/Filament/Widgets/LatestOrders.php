@@ -15,6 +15,11 @@ class LatestOrders extends BaseWidget
 
     protected int|string|array $columnSpan = 'full';
 
+    public static function canView(): bool
+    {
+        return auth()->user()->can('orders.view');
+    }
+
     protected static ?int $sort = 2;
 
     public function table(Table $table): Table
@@ -71,7 +76,7 @@ class LatestOrders extends BaseWidget
                     ->sortable()
                     ->badge()
                     ->searchable(),
-                
+
                 TextColumn::make('created_at')
                     ->label('Order Date')
                     ->dateTime()

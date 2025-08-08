@@ -13,7 +13,21 @@ class EditCategory extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->requiresConfirmation()
+                ->modalHeading('Delete Category')
+                ->modalDescription('Are you sure you want to delete this category? This action cannot be undone.')
+                ->modalSubmitActionLabel('Yes, delete it'),
         ];
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
+
+    protected function getSavedNotificationTitle(): ?string
+    {
+        return 'Category updated successfully';
     }
 }
