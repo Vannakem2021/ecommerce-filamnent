@@ -123,7 +123,7 @@ class Product extends Model
      */
     public function variants()
     {
-        return $this->hasMany(ProductVariant::class)->orderBy('is_default', 'desc');
+        return $this->hasMany(ProductVariant::class);
     }
 
     /**
@@ -601,6 +601,120 @@ class Product extends Model
         $variant->save();
 
         return $variant;
+    }
+
+    // ========================================
+    // SIMPLIFIED VARIANT METHODS (JSON-based)
+    // ========================================
+
+    /**
+     * Find variant by selected options (simplified approach)
+     */
+    public function findVariantByOptions($selectedOptions)
+    {
+        return $this->variants()
+            ->get()
+            ->first(function ($variant) use ($selectedOptions) {
+                return ($variant->options ?? []) === $selectedOptions;
+            });
+    }
+
+    /**
+     * Get available options for dropdowns (simplified approach)
+     */
+    public function getAvailableOptions()
+    {
+        $options = [];
+        $variants = $this->variants()->get(); // Use method call instead of property
+
+        foreach ($variants as $variant) {
+            foreach ($variant->options ?? [] as $key => $value) {
+                if (!isset($options[$key])) {
+                    $options[$key] = [];
+                }
+                if (!in_array($value, $options[$key])) {
+                    $options[$key][] = $value;
+                }
+            }
+        }
+
+        return $options;
+    }
+
+    /**
+     * Get price range from variants (simplified approach)
+     */
+    public function getPriceRange()
+    {
+        if (!$this->has_variants) {
+            return [
+                'min' => $this->price_cents / 100,
+                'max' => $this->price_cents / 100
+            ];
+        }
+
+        $variants = $this->variants()->get(); // Use method call
+        if ($variants->isEmpty()) {
+            return [
+                'min' => $this->price_cents / 100,
+                'max' => $this->price_cents / 100
+            ];
+        }
+
+        $prices = $variants->pluck('price_cents')->map(fn($p) => $p / 100);
+        return [
+            'min' => $prices->min(),
+            'max' => $prices->max()
+        ];
+    }
+
+    /**
+     * Get total stock across all variants
+     */
+    public function getTotalStock()
+    {
+        if (!$this->has_variants) {
+            return $this->stock_quantity;
+        }
+
+        return $this->variants()->sum('stock_quantity'); // Use method call
+    }
+
+    /**
+     * Check if product has any stock available
+     */
+    public function hasStock()
+    {
+        if (!$this->has_variants) {
+            return $this->stock_quantity > 0;
+        }
+
+        return $this->variants()->sum('stock_quantity') > 0; // Use method call
+    }
+
+    /**
+     * Get the cheapest variant
+     */
+    public function getCheapestVariant()
+    {
+        if (!$this->has_variants) {
+            return null;
+        }
+
+        $variants = $this->variants()->get(); // Use method call
+        if ($variants->isEmpty()) {
+            return null;
+        }
+
+        return $variants->sortBy('price_cents')->first();
+    }
+
+    /**
+     * Get variant by SKU (simplified lookup)
+     */
+    public function getVariantBySku($sku)
+    {
+        return $this->variants()->where('sku', $sku)->first();
     }
 
     // ===== SPECIFICATION RELATIONSHIPS =====

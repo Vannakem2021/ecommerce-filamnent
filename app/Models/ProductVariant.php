@@ -13,11 +13,15 @@ class ProductVariant extends Model
     protected $fillable = [
         'product_id',
         'sku',
-        'name',
         'price_cents',
+        'stock_quantity',
+        'options', // New JSON column for variant choices
+        'image_url', // New column for variant-specific image
+
+        // Legacy fields (kept for backward compatibility)
+        'name',
         'compare_price_cents',
         'cost_price_cents',
-        'stock_quantity',
         'stock_status',
         'low_stock_threshold',
         'track_inventory',
@@ -30,6 +34,7 @@ class ProductVariant extends Model
     ];
 
     protected $casts = [
+        'options' => 'array', // New JSON cast for variant options
         'dimensions' => 'array',
         'images' => 'array',
         'track_inventory' => 'boolean',
@@ -337,6 +342,76 @@ class ProductVariant extends Model
 
         $this->stock_quantity += $quantity;
         $this->updateStockStatus();
+    }
+
+    // ========================================
+    // SIMPLIFIED INVENTORY METHODS (SKU-based)
+    // ========================================
+
+    /**
+     * Simple stock reduction with overselling prevention
+     * Returns true if successful, false if insufficient stock
+     */
+    public function reduceStockSimple($quantity)
+    {
+        if ($this->stock_quantity < $quantity) {
+            return false; // Prevent overselling
+        }
+
+        $this->decrement('stock_quantity', $quantity);
+        return true;
+    }
+
+    /**
+     * Simple stock increase
+     */
+    public function increaseStockSimple($quantity)
+    {
+        $this->increment('stock_quantity', $quantity);
+    }
+
+    /**
+     * Check if variant is in stock
+     */
+    public function isInStock()
+    {
+        return $this->stock_quantity > 0;
+    }
+
+    /**
+     * Get simple stock status for display
+     */
+    public function getSimpleStockStatus()
+    {
+        if ($this->stock_quantity <= 0) {
+            return 'out_of_stock';
+        } elseif ($this->stock_quantity <= 5) { // configurable threshold
+            return 'low_stock';
+        }
+        return 'in_stock';
+    }
+
+    /**
+     * Get stock display text
+     */
+    public function getStockDisplayText()
+    {
+        if ($this->stock_quantity > 0) {
+            return "In Stock ({$this->stock_quantity} available)";
+        }
+        return "Out of Stock";
+    }
+
+    /**
+     * Find variant by options (for simple variant matching)
+     */
+    public static function findByOptions($productId, $selectedOptions)
+    {
+        return static::where('product_id', $productId)
+            ->get()
+            ->first(function ($variant) use ($selectedOptions) {
+                return ($variant->options ?? []) === $selectedOptions;
+            });
     }
 
     /**
