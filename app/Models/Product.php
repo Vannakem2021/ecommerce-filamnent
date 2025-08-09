@@ -32,6 +32,7 @@ class Product extends Model
         'has_variants',
         'variant_type',
         'variant_attributes',
+        'attributes', // New JSON column for simplified attributes
         'is_active',
         'is_featured',
         'in_stock',
@@ -50,6 +51,7 @@ class Product extends Model
     protected $casts = [
         'images' => 'array',
         'variant_attributes' => 'array',
+        'attributes' => 'array', // New JSON column for simplified attributes
         'track_inventory' => 'boolean',
         'has_variants' => 'boolean',
         'is_active' => 'boolean',
