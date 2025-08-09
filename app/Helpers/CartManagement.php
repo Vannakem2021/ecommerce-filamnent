@@ -14,17 +14,17 @@ class CartManagement {
         return self::addItemToCartWithQuantity($product_id, 1, 'product');
     }
 
-    // add item to cart with variant support
-    static public function addItemToCartWithVariant($product_id, $variant_id = null, $quantity = 1, $variant_attributes = [])
+    // add item to cart with variant support (simplified - uses JSON options)
+    static public function addItemToCartWithVariant($product_id, $variant_id = null, $quantity = 1, $variant_options = [])
     {
         $type = $variant_id ? 'variant' : 'product';
         $item_id = $variant_id ?? $product_id;
 
-        return self::addItemToCartWithQuantity($item_id, $quantity, $type, $variant_attributes, $product_id);
+        return self::addItemToCartWithQuantity($item_id, $quantity, $type, $variant_options, $product_id);
     }
 
-    // add item to cart with specific quantity and type
-    static public function addItemToCartWithQuantity($item_id, $quantity = 1, $type = 'product', $variant_attributes = [], $product_id = null)
+    // add item to cart with specific quantity and type (simplified - uses JSON options)
+    static public function addItemToCartWithQuantity($item_id, $quantity = 1, $type = 'product', $variant_options = [], $product_id = null)
     {
         // Check permissions and rate limiting
         if (!CartValidationService::validateCartPermissions('add_to_cart', auth()->id())) {
@@ -33,8 +33,8 @@ class CartManagement {
 
         $cart_items = self::getCartItemsFromCookie();
 
-        // Create unique item key that includes variant attributes
-        $item_key = self::generateItemKey($item_id, $type, $variant_attributes);
+        // Create unique item key that includes variant options (JSON-based)
+        $item_key = self::generateItemKey($item_id, $type, $variant_options);
 
         $existing_item = null;
 
@@ -84,7 +84,7 @@ class CartManagement {
                     'variant_id' => $itemData['variant_id'],
                     'name' => $itemData['name'],
                     'image' => $itemData['image'],
-                    'variant_attributes' => $variant_attributes,
+                    'variant_options' => $variant_options, // Simplified JSON options
                     'quantity' => $quantity,
                     'unit_amount' => $itemData['price'],
                     'total_amount' => $itemData['price'] * $quantity,
@@ -231,16 +231,16 @@ class CartManagement {
         return array_sum(array_column($items, 'quantity'));
     }
 
-    // Generate unique item key for cart items
-    static protected function generateItemKey($item_id, $type, $variant_attributes = [])
+    // Generate unique item key for cart items (simplified - uses JSON options)
+    static public function generateItemKey($item_id, $type, $variant_options = [])
     {
         $base_key = $type . '_' . $item_id;
 
-        if (!empty($variant_attributes)) {
-            // Sort attributes to ensure consistent key generation
-            ksort($variant_attributes);
-            $attributes_hash = md5(serialize($variant_attributes));
-            return $base_key . '_' . $attributes_hash;
+        if (!empty($variant_options)) {
+            // Sort options to ensure consistent key generation
+            ksort($variant_options);
+            $options_hash = md5(serialize($variant_options));
+            return $base_key . '_' . $options_hash;
         }
 
         return $base_key;
@@ -276,7 +276,7 @@ class CartManagement {
         return null;
     }
 
-    // Validate inventory before adding to cart
+    // Validate inventory before adding to cart (simplified with SKU-based tracking)
     static public function validateInventory($product_id, $variant_id = null, $quantity = 1)
     {
         if ($variant_id) {
@@ -285,7 +285,8 @@ class CartManagement {
                 return ['valid' => false, 'message' => 'Product variant not found'];
             }
 
-            if ($variant->track_inventory && $variant->stock_quantity < $quantity) {
+            // Simplified inventory check - always track inventory for variants
+            if ($variant->stock_quantity < $quantity) {
                 return [
                     'valid' => false,
                     'message' => "Insufficient stock. Available: {$variant->stock_quantity}, Requested: {$quantity}"
@@ -297,7 +298,8 @@ class CartManagement {
                 return ['valid' => false, 'message' => 'Product not found'];
             }
 
-            if ($product->track_inventory && $product->stock_quantity < $quantity) {
+            // For products without variants, check product stock
+            if ($product->stock_quantity < $quantity) {
                 return [
                     'valid' => false,
                     'message' => "Insufficient stock. Available: {$product->stock_quantity}, Requested: {$quantity}"
@@ -306,6 +308,36 @@ class CartManagement {
         }
 
         return ['valid' => true, 'message' => 'Stock available'];
+    }
+
+    // ========================================
+    // SIMPLIFIED INVENTORY OPERATIONS
+    // ========================================
+
+    /**
+     * Reduce stock when order is placed (simplified approach)
+     */
+    static public function reduceInventoryForOrder($cart_items)
+    {
+        foreach ($cart_items as $item) {
+            if ($item['type'] === 'variant' && $item['variant_id']) {
+                $variant = ProductVariant::find($item['variant_id']);
+                if ($variant) {
+                    $success = $variant->reduceStockSimple($item['quantity']);
+                    if (!$success) {
+                        throw new \Exception("Failed to reduce stock for variant {$variant->sku}");
+                    }
+                }
+            } else {
+                $product = Product::find($item['product_id']);
+                if ($product) {
+                    if ($product->stock_quantity < $item['quantity']) {
+                        throw new \Exception("Insufficient stock for product {$product->name}");
+                    }
+                    $product->decrement('stock_quantity', $item['quantity']);
+                }
+            }
+        }
     }
 
 }

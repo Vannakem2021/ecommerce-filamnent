@@ -37,9 +37,20 @@
                                         <div class="flex flex-col md:flex-row md:items-center justify-between mb-4">
                                             <div>
                                                 <h3 class="text-lg font-semibold text-gray-900 mb-1">{{ $item['name'] }}</h3>
-                                                <p class="text-sm text-gray-600">
+                                                <p class="text-sm text-gray-600 mb-1">
                                                     Electronics • SKU: {{ 'PRD-' . str_pad($item['product_id'], 3, '0', STR_PAD_LEFT) }}
                                                 </p>
+
+                                                <!-- Display Variant Options (Simplified) -->
+                                                @if(isset($item['variant_options']) && !empty($item['variant_options']))
+                                                    <div class="flex flex-wrap gap-2 mt-2">
+                                                        @foreach($item['variant_options'] as $optionName => $optionValue)
+                                                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                                {{ $optionName }}: {{ $optionValue }}
+                                                            </span>
+                                                        @endforeach
+                                                    </div>
+                                                @endif
                                             </div>
                                             <button
                                                 wire:click="removeItem('{{ $item['item_key'] }}')"
