@@ -27,13 +27,77 @@ products
 ├── id, name, slug, description
 ├── attributes (JSON) → specs for filtering
 ├── images (JSON array)
-├── price_cents, stock_quantity
+├── price_cents, stock_quantity (for single-SKU products)
+├── has_variants (boolean)
 └── variants (JSON array) → choices that affect price/stock
+
+product_variants (for SKU-based inventory tracking)
+├── id, product_id, sku
+├── options (JSON) → variant choices
+├── price_cents, stock_quantity
+└── image_url
 
 orders/order_items (unchanged - for historical data)
 ```
 
-## 🔄 Data Transformation Examples
+## � SKU-based Inventory Tracking (Prevents Overselling)
+
+### Simple Inventory Operations
+
+**For Single-SKU Products (no variants):**
+
+-   Stock tracked in `products.stock_quantity`
+-   Operations: `UPDATE products SET stock_quantity = stock_quantity - :qty WHERE id = :product_id AND stock_quantity >= :qty`
+
+**For Products with Variants:**
+
+-   Stock tracked per SKU in `product_variants.stock_quantity`
+-   Operations: `UPDATE product_variants SET stock_quantity = stock_quantity - :qty WHERE id = :variant_id AND stock_quantity >= :qty`
+
+### Inventory Management Examples
+
+```php
+// Purchase operation (prevents overselling)
+$variant = ProductVariant::where('sku', 'PHN-IP15P-BLK-128')->first();
+if ($variant->stock_quantity >= $requestedQty) {
+    $variant->decrement('stock_quantity', $requestedQty);
+    // Order successful
+} else {
+    // Insufficient stock - prevent overselling
+    throw new Exception("Only {$variant->stock_quantity} items available");
+}
+
+// Restock operation
+$variant->increment('stock_quantity', $restockQty);
+
+// Check availability
+$inStock = $variant->stock_quantity > 0;
+$lowStock = $variant->stock_quantity <= 5; // configurable threshold
+```
+
+### Stock Status Display
+
+```php
+// Simple stock status logic
+public function getStockStatus()
+{
+    if ($this->stock_quantity <= 0) {
+        return 'out_of_stock';
+    } elseif ($this->stock_quantity <= 5) {
+        return 'low_stock';
+    }
+    return 'in_stock';
+}
+
+// Frontend display
+if ($variant->stock_quantity > 0) {
+    echo "In Stock ({$variant->stock_quantity} available)";
+} else {
+    echo "Out of Stock";
+}
+```
+
+## �🔄 Data Transformation Examples
 
 ### Current Product with Variants
 
@@ -69,6 +133,7 @@ Product {
 Product {
     id: 1,
     name: "iPhone 15 Pro",
+    has_variants: true,
     attributes: {
         "brand": "Apple",
         "cpu": "A17 Pro",
@@ -76,16 +141,18 @@ Product {
         "camera": "48MP Main + 12MP Ultra Wide",
         "battery_hours": 23,
         "ip_rating": "IP68"
-    },
-    variants: [
-        {
-            "sku": "PHN-IP15P-BLK-128",
-            "options": {"Color": "Black", "Storage": "128 GB"},
-            "price": 999,
-            "stock": 20,
-            "image": "iphone-15-pro-black.jpg"
-        }
-    ]
+    }
+}
+
+// Separate table for SKU-based inventory tracking
+ProductVariant {
+    id: 1,
+    product_id: 1,
+    sku: "PHN-IP15P-BLK-128",
+    options: {"Color": "Black", "Storage": "128 GB"},
+    price_cents: 99900,
+    stock_quantity: 20,
+    image_url: "iphone-15-pro-black.jpg"
 }
 ```
 
@@ -93,7 +160,7 @@ Product {
 
 ### Advanced Features Being Removed
 
--   ❌ **Inventory Reservations** - No prevention of overselling
+-   ❌ **Complex Inventory Reservations** - Advanced reservation system removed
 -   ❌ **Complex Relationships** - No attribute dependencies
 -   ❌ **Performance Optimizations** - No composite indexes
 -   ❌ **Rich Admin Interface** - JSON editors instead of forms
@@ -107,6 +174,7 @@ Product {
 -   ✅ **Speed** - Faster development
 -   ✅ **Reduced Complexity** - Fewer moving parts
 -   ✅ **Human-readable Data** - JSON is easy to debug
+-   ✅ **Simple Inventory Tracking** - SKU-based stock management to prevent overselling
 
 ## ⚠️ Risk Assessment
 
@@ -123,7 +191,7 @@ Product {
 1. **API Endpoints**: Specification endpoints will be obsolete
 2. **Search/Filtering**: Current attribute-based filtering needs redesign
 3. **Performance**: JSON queries are less efficient than normalized queries
-4. **Inventory**: Advanced reservation system will be lost
+4. **Inventory**: Advanced reservation system will be lost (but basic SKU-based tracking retained)
 
 ### LOW RISK Areas
 
@@ -209,20 +277,39 @@ foreach (Product::with(['variants.attributeValues']) as $product) {
 **Duration: 1 hour**
 **Risk Level: HIGH**
 
-#### 3.1 Add New JSON Columns
+#### 3.1 Add New JSON Column & Simplify Variants Table
 
 ```sql
+-- Add attributes JSON column to products
 ALTER TABLE products ADD COLUMN attributes JSON;
-ALTER TABLE products ADD COLUMN variants JSON;
+
+-- Simplify product_variants table (keep for SKU-based inventory)
+-- Remove complex columns, keep essential fields for inventory tracking
+ALTER TABLE product_variants DROP COLUMN name;
+ALTER TABLE product_variants DROP COLUMN compare_price_cents;
+ALTER TABLE product_variants DROP COLUMN cost_price_cents;
+ALTER TABLE product_variants DROP COLUMN stock_status;
+ALTER TABLE product_variants DROP COLUMN low_stock_threshold;
+ALTER TABLE product_variants DROP COLUMN track_inventory;
+ALTER TABLE product_variants DROP COLUMN weight;
+ALTER TABLE product_variants DROP COLUMN dimensions;
+ALTER TABLE product_variants DROP COLUMN barcode;
+ALTER TABLE product_variants DROP COLUMN images;
+ALTER TABLE product_variants DROP COLUMN is_active;
+ALTER TABLE product_variants DROP COLUMN is_default;
+
+-- Add options JSON column for variant choices
+ALTER TABLE product_variants ADD COLUMN options JSON;
+ALTER TABLE product_variants ADD COLUMN image_url TEXT;
 ```
 
 #### 3.2 Preserve Historical Data
 
 ```sql
--- Keep variant tables for order history
+-- Keep complex variant tables for order history
 -- Mark as deprecated but don't drop yet
-ALTER TABLE product_variants ADD COLUMN deprecated_at TIMESTAMP;
-UPDATE product_variants SET deprecated_at = NOW();
+ALTER TABLE product_variant_attributes ADD COLUMN deprecated_at TIMESTAMP;
+UPDATE product_variant_attributes SET deprecated_at = NOW();
 ```
 
 ### Phase 4: Model Simplification (MEDIUM RISK)
@@ -280,11 +367,12 @@ class SimpleVariantHelper
 -   Show simple option count from JSON array
 -   Simplify price calculation
 
-#### 5.3 Update Cart System
+#### 5.3 Update Cart System with SKU-based Inventory
 
--   Remove inventory reservation logic
--   Simplify to basic stock checking
--   Update cart item structure
+-   Remove complex inventory reservation logic
+-   Implement simple SKU-based stock checking
+-   Update cart item structure to use simplified variants
+-   Add overselling prevention at checkout
 
 ### Phase 6: Admin Panel Reconstruction (HIGH RISK)
 
@@ -434,16 +522,29 @@ JsonEditor::make('variants')
 
 ## 🔧 Technical Implementation Details
 
-### New Database Schema (Simplified)
+### New Database Schema (Simplified with SKU-based Inventory)
 
 ```sql
--- Updated products table
+-- Updated products table (for specs and single-SKU products)
 ALTER TABLE products ADD COLUMN attributes JSON COMMENT 'Product specs for filtering/search';
-ALTER TABLE products ADD COLUMN variants JSON COMMENT 'Array of variant options affecting price/stock';
+
+-- Keep simplified product_variants table for SKU-based inventory tracking
+-- This prevents overselling while maintaining simplicity
+CREATE TABLE product_variants (
+    id BIGINT PRIMARY KEY,
+    product_id BIGINT REFERENCES products(id),
+    sku TEXT UNIQUE NOT NULL,
+    options JSON, -- {"Color":"Black","Storage":"256 GB"}
+    price_cents INT NOT NULL,
+    stock_quantity INT NOT NULL DEFAULT 0,
+    image_url TEXT,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
 
 -- Example data structure:
--- attributes: {"brand":"Zephyr","cpu":"Snapdragon 8","display":"6.7\" OLED"}
--- variants: [{"sku":"PHN-ZEP-BLK-128","options":{"Color":"Black","Storage":"128GB"},"price":799,"stock":20}]
+-- products.attributes: {"brand":"Zephyr","cpu":"Snapdragon 8","display":"6.7\" OLED"}
+-- product_variants: {"sku":"PHN-ZEP-BLK-128","options":{"Color":"Black","Storage":"128GB"},"price_cents":79900,"stock_quantity":20}
 ```
 
 ### Data Migration Script Template
@@ -465,13 +566,12 @@ class MigrateToSimpleVariants extends Command
                 // Build attributes JSON from specifications
                 $attributes = $this->buildAttributesFromSpecs($product);
 
-                // Build variants JSON from current variants
-                $variants = $this->buildVariantsFromCurrent($product);
+                // Migrate variants to simplified product_variants table
+                $this->migrateVariantsToSimpleTable($product);
 
-                // Update product
+                // Update product with attributes only
                 $product->update([
-                    'attributes' => $attributes,
-                    'variants' => $variants
+                    'attributes' => $attributes
                 ]);
 
                 $this->info("Migrated product: {$product->name}");
@@ -498,13 +598,14 @@ class MigrateToSimpleVariants extends Command
         return $attributes;
     }
 
-    private function buildVariantsFromCurrent($product)
+    private function migrateVariantsToSimpleTable($product)
     {
         if (!$product->has_variants) {
-            return [];
+            return;
         }
 
-        $variants = [];
+        // Clear existing simple variants for this product
+        DB::table('product_variants')->where('product_id', $product->id)->delete();
 
         foreach ($product->variants as $variant) {
             $options = [];
@@ -515,40 +616,37 @@ class MigrateToSimpleVariants extends Command
                 $options[$attributeName] = $attributeValue->value;
             }
 
-            $variants[] = [
+            // Insert into simplified product_variants table
+            DB::table('product_variants')->insert([
+                'product_id' => $product->id,
                 'sku' => $variant->sku,
-                'options' => $options,
-                'price' => $variant->price_cents / 100,
-                'stock' => $variant->stock_quantity,
-                'image' => $variant->images[0] ?? null
-            ];
+                'options' => json_encode($options),
+                'price_cents' => $variant->price_cents,
+                'stock_quantity' => $variant->stock_quantity,
+                'image_url' => $variant->images[0] ?? null,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
         }
-
-        return $variants;
     }
 }
 ```
 
-### Simplified Model Structure
+### Simplified Model Structure with SKU-based Inventory
 
 ```php
 class Product extends Model
 {
     protected $casts = [
         'attributes' => 'array',
-        'variants' => 'array',
-        'images' => 'array'
+        'images' => 'array',
+        'has_variants' => 'boolean'
     ];
 
-    // Simple variant finder
-    public function findVariantByOptions($selectedOptions)
+    // Relationship to simplified variants
+    public function variants()
     {
-        foreach ($this->variants ?? [] as $variant) {
-            if (($variant['options'] ?? []) === $selectedOptions) {
-                return $variant;
-            }
-        }
-        return null;
+        return $this->hasMany(ProductVariant::class);
     }
 
     // Get available options for dropdowns
@@ -556,8 +654,8 @@ class Product extends Model
     {
         $options = [];
 
-        foreach ($this->variants ?? [] as $variant) {
-            foreach ($variant['options'] ?? [] as $key => $value) {
+        foreach ($this->variants as $variant) {
+            foreach ($variant->options ?? [] as $key => $value) {
                 if (!isset($options[$key])) {
                     $options[$key] = [];
                 }
@@ -570,15 +668,48 @@ class Product extends Model
         return $options;
     }
 
-    // Get price range
+    // Get price range from variants
     public function getPriceRange()
     {
-        if (empty($this->variants)) {
+        if (!$this->has_variants) {
             return ['min' => $this->price_cents / 100, 'max' => $this->price_cents / 100];
         }
 
-        $prices = array_column($this->variants, 'price');
-        return ['min' => min($prices), 'max' => max($prices)];
+        $prices = $this->variants->pluck('price_cents')->map(fn($p) => $p / 100);
+        return ['min' => $prices->min(), 'max' => $prices->max()];
+    }
+}
+
+class ProductVariant extends Model
+{
+    protected $fillable = [
+        'product_id', 'sku', 'options', 'price_cents',
+        'stock_quantity', 'image_url'
+    ];
+
+    protected $casts = [
+        'options' => 'array'
+    ];
+
+    // Simple inventory operations
+    public function reduceStock($quantity)
+    {
+        if ($this->stock_quantity < $quantity) {
+            return false; // Prevent overselling
+        }
+
+        $this->decrement('stock_quantity', $quantity);
+        return true;
+    }
+
+    public function increaseStock($quantity)
+    {
+        $this->increment('stock_quantity', $quantity);
+    }
+
+    public function isInStock()
+    {
+        return $this->stock_quantity > 0;
     }
 }
 ```
@@ -619,8 +750,9 @@ php artisan migrate:simple-variants            # Actual migration
 ### Step 6: Update Admin Panel
 
 -   Remove complex Filament resources
--   Add simple JSON editors
--   Create basic variant management
+-   Add simple JSON editors for attributes
+-   Create basic variant management with SKU-based inventory
+-   Add simple stock management interface
 
 ## 📝 Files That Need Changes
 
@@ -666,9 +798,11 @@ php artisan migrate:simple-variants            # Actual migration
 
 -   [ ] Products display correctly with JSON attributes
 -   [ ] Variant selection works with simple dropdowns
--   [ ] Cart handles variants with JSON options
+-   [ ] Cart handles variants with SKU-based inventory
 -   [ ] Orders can be placed with variants
--   [ ] Admin can manage variants via JSON editor
+-   [ ] Admin can manage variants and stock levels
+-   [ ] Inventory tracking prevents overselling
+-   [ ] Stock status displays correctly (in stock/out of stock)
 
 ### Performance Requirements
 
@@ -740,6 +874,36 @@ If you want simplicity but keep some advanced features:
 -   [ ] **Success criteria defined and agreed upon**
 
 **Ready to proceed with Phase 1?** This migration will significantly simplify your system but requires careful execution to avoid data loss.
+
+---
+
+## 🎯 Key Benefits of SKU-based Inventory Approach
+
+### ✅ Prevents Overselling
+
+-   Each variant has its own `stock_quantity` field
+-   Atomic stock updates with `WHERE stock_quantity >= :qty` condition
+-   No complex reservation system needed
+
+### ✅ Simple but Effective
+
+-   Two-table approach: `products` (specs) + `product_variants` (SKU inventory)
+-   JSON for flexible attributes and variant options
+-   Standard SQL operations for inventory management
+
+### ✅ Maintains Essential Features
+
+-   **Inventory Tracking**: Per-SKU stock quantities
+-   **Overselling Prevention**: Database-level stock validation
+-   **Stock Status**: Simple in_stock/out_of_stock logic
+-   **Low Stock Alerts**: Configurable thresholds per variant
+
+### ✅ Easy to Understand & Maintain
+
+-   Clear separation: specs vs. inventory
+-   Human-readable JSON for variant options
+-   Simple model relationships
+-   Straightforward admin interface
 
 ---
 
