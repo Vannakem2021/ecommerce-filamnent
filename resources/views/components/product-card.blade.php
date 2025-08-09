@@ -32,10 +32,10 @@
             @endif
 
             <!-- Variants Badge -->
-            @if($product->has_variants && ($product->active_variants_count ?? 0) > 0)
+            @if($product->has_variants && $product->variants && $product->variants->isNotEmpty())
                 <div class="absolute bottom-4 left-4">
                     <span class="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded shadow-lg">
-                        {{ $product->active_variants_count }} Options
+                        {{ $product->variants->count() }} Options
                     </span>
                 </div>
             @endif
@@ -100,31 +100,53 @@
             <!-- Variant Options Preview (for products with variants) -->
             @if($product->has_variants && $product->variants && $product->variants->isNotEmpty())
                 @php
-                    // Optimized color extraction - single pass through variants
-                    $availableColors = $product->variants
-                        ->pluck('attributeValues')
-                        ->flatten()
-                        ->filter(function($attributeValue) {
-                            return $attributeValue->attribute &&
-                                   strtolower($attributeValue->attribute->name) === 'color';
-                        })
-                        ->unique('id');
-
-                    $totalColors = $availableColors->count();
-                    $displayColors = $availableColors->take(4);
+                    $availableColors = collect();
+                    try {
+                        // Safely get color attributes from variants
+                        foreach ($product->variants as $variant) {
+                            if ($variant->attributeValues && $variant->attributeValues->isNotEmpty()) {
+                                $colorValues = $variant->attributeValues->filter(function($attributeValue) {
+                                    return $attributeValue->attribute &&
+                                           strtolower($attributeValue->attribute->name) === 'color';
+                                });
+                                $availableColors = $availableColors->merge($colorValues);
+                            }
+                        }
+                        $availableColors = $availableColors->unique('id')->take(4);
+                    } catch (Exception $e) {
+                        $availableColors = collect();
+                    }
                 @endphp
 
-                @if($displayColors->isNotEmpty())
+                @if($availableColors->isNotEmpty())
                 <div class="mb-4">
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-500">Colors:</span>
                         <div class="flex gap-1">
-                            @foreach($displayColors as $color)
+                            @foreach($availableColors as $color)
                                 <div class="w-4 h-4 rounded-full border border-gray-300"
                                      style="background-color: {{ $color->color_code ?? '#6B7280' }}"
                                      title="{{ $color->value ?? 'Color' }}">
                                 </div>
                             @endforeach
+                            @php
+                                $totalColors = 0;
+                                try {
+                                    $allColors = collect();
+                                    foreach ($product->variants as $variant) {
+                                        if ($variant->attributeValues && $variant->attributeValues->isNotEmpty()) {
+                                            $colorValues = $variant->attributeValues->filter(function($attributeValue) {
+                                                return $attributeValue->attribute &&
+                                                       strtolower($attributeValue->attribute->name) === 'color';
+                                            });
+                                            $allColors = $allColors->merge($colorValues);
+                                        }
+                                    }
+                                    $totalColors = $allColors->unique('id')->count();
+                                } catch (Exception $e) {
+                                    $totalColors = 0;
+                                }
+                            @endphp
                             @if($totalColors > 4)
                                 <span class="text-xs text-gray-500">+{{ $totalColors - 4 }} more</span>
                             @endif
@@ -138,13 +160,25 @@
             <div class="flex items-center justify-between mb-5">
                 <div class="flex items-baseline gap-2">
                     @php
-                        // Use pre-calculated price data from query
-                        $minPriceCents = $product->min_price_cents ?? $product->price_cents ?? 0;
-                        $maxPriceCents = $product->max_price_cents ?? $product->price_cents ?? 0;
-                        $minPrice = $minPriceCents / 100;
-                        $maxPrice = $maxPriceCents / 100;
-                        $showPriceRange = $product->has_variants && ($minPriceCents != $maxPriceCents);
-                        $displayPrice = $minPrice;
+                        $displayPrice = $product->price ?? 0;
+                        $showPriceRange = false;
+                        $minPrice = 0;
+                        $maxPrice = 0;
+
+                        if ($product->has_variants && $product->variants && $product->variants->isNotEmpty()) {
+                            try {
+                                // Get min and max prices from active variants
+                                $activePrices = $product->variants->where('is_active', true)->pluck('price_cents')->filter();
+                                if ($activePrices->isNotEmpty()) {
+                                    $minPrice = $activePrices->min() / 100;
+                                    $maxPrice = $activePrices->max() / 100;
+                                    $showPriceRange = $minPrice != $maxPrice;
+                                    $displayPrice = $minPrice;
+                                }
+                            } catch (Exception $e) {
+                                $displayPrice = $product->price ?? 0;
+                            }
+                        }
                     @endphp
 
                     @if($showPriceRange)
@@ -171,7 +205,7 @@
             </div>
 
             <!-- Add to Cart Button -->
-            @if($product->has_variants && ($product->active_variants_count ?? 0) > 0)
+            @if($product->has_variants && $product->variants && $product->variants->isNotEmpty())
                 <!-- For products with variants, show "View Options" button -->
                 <a href="{{ route('product-details', $product->slug) }}"
                    wire:navigate

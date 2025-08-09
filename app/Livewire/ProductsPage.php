@@ -127,34 +127,12 @@ class ProductsPage extends Component
                 'category:id,name,slug',
                 'brand:id,name,slug',
                 'variants' => function ($query) {
-                    $query->select('id', 'product_id', 'sku', 'price_cents', 'compare_price_cents', 'stock_quantity', 'stock_status', 'is_active', 'is_default')
-                        ->where('is_active', true)
-                        ->orderBy('is_default', 'desc');
+                    $query->where('is_active', true)
+                        ->orderBy('is_default', 'desc')
+                        ->with(['attributeValues.attribute']);
                 },
-                'variants.attributeValues:id,value,color_code,product_attribute_id',
-                'variants.attributeValues.attribute:id,name,slug,type',
-                'defaultVariant:id,product_id,sku,price_cents,compare_price_cents,stock_quantity,is_active,is_default'
-            ])
-            ->withCount(['variants as active_variants_count' => function ($query) {
-                $query->where('is_active', true);
-            }])
-            ->selectRaw('products.*,
-                CASE
-                    WHEN has_variants = 1 THEN (
-                        SELECT MIN(price_cents) FROM product_variants
-                        WHERE product_variants.product_id = products.id
-                        AND product_variants.is_active = 1
-                    )
-                    ELSE price_cents
-                END as min_price_cents,
-                CASE
-                    WHEN has_variants = 1 THEN (
-                        SELECT MAX(price_cents) FROM product_variants
-                        WHERE product_variants.product_id = products.id
-                        AND product_variants.is_active = 1
-                    )
-                    ELSE price_cents
-                END as max_price_cents');
+                'defaultVariant'
+            ]);
 
         $brands = Brand::where('is_active', 1)->get(['id', 'name', 'slug']);
 

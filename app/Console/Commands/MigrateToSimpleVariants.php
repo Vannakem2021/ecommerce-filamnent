@@ -4,14 +4,14 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 
-class CleanupExpiredReservations extends Command
+class MigrateToSimpleVariants extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'app:cleanup-expired-reservations';
+    protected $signature = 'app:migrate-to-simple-variants';
 
     /**
      * The console command description.

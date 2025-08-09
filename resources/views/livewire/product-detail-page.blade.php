@@ -196,15 +196,44 @@
                             @if(strtolower($attribute->name) === 'color')
                             <!-- Enhanced Color Selection -->
                             <div class="flex gap-3 flex-wrap">
-                                @php
-                                    // Get available values for this attribute based on current selections
-                                    $availableValues = $product->getAvailableAttributeValues($attribute->id, $selectedAttributes);
-                                    $availableValueIds = $availableValues->pluck('id')->toArray();
-                                @endphp
                                 @foreach($attribute->activeValues as $value)
                                     @php
                                         $isSelected = isset($selectedAttributes[$attribute->id]) && $selectedAttributes[$attribute->id] == $value->id;
-                                        $isAvailable = in_array($value->id, $availableValueIds) || $isSelected;
+
+                                        // Progressive availability: check if this value is available given current selections
+                                        $isAvailable = true;
+                                        if (!empty($selectedAttributes)) {
+                                            // Create a test selection with this value
+                                            $testSelection = $selectedAttributes;
+                                            $testSelection[$attribute->id] = $value->id;
+
+                                            // Check if any variant exists with this combination
+                                            $availableVariants = $product->variants->filter(function($variant) use ($testSelection) {
+                                                if (!$variant->is_active || $variant->stock_quantity <= 0) {
+                                                    return false;
+                                                }
+
+                                                // Check if variant has all the test selection attributes
+                                                foreach ($testSelection as $attrId => $valueId) {
+                                                    $hasAttribute = $variant->attributeValues->contains(function($av) use ($attrId, $valueId) {
+                                                        return $av->attribute_id == $attrId && $av->id == $valueId;
+                                                    });
+                                                    if (!$hasAttribute) {
+                                                        return false;
+                                                    }
+                                                }
+                                                return true;
+                                            });
+
+                                            $isAvailable = $availableVariants->isNotEmpty();
+                                        } else {
+                                            // No selections yet, check if this value exists in any active variant
+                                            $isAvailable = $product->variants->where('is_active', true)
+                                                ->where('stock_quantity', '>', 0)
+                                                ->filter(function($variant) use ($value) {
+                                                    return $variant->attributeValues->contains('id', $value->id);
+                                                })->isNotEmpty();
+                                        }
                                     @endphp
                                     <div class="relative group">
                                         <button wire:click="selectAttributeValue({{ $attribute->id }}, {{ $value->id }})"
@@ -245,15 +274,44 @@
                             @else
                             <!-- Enhanced Size/Other Attribute Selection -->
                             <div class="flex gap-3 flex-wrap">
-                                @php
-                                    // Get available values for this attribute based on current selections
-                                    $availableValues = $product->getAvailableAttributeValues($attribute->id, $selectedAttributes);
-                                    $availableValueIds = $availableValues->pluck('id')->toArray();
-                                @endphp
                                 @foreach($attribute->activeValues as $value)
                                     @php
                                         $isSelected = isset($selectedAttributes[$attribute->id]) && $selectedAttributes[$attribute->id] == $value->id;
-                                        $isAvailable = in_array($value->id, $availableValueIds) || $isSelected;
+
+                                        // Progressive availability: check if this value is available given current selections
+                                        $isAvailable = true;
+                                        if (!empty($selectedAttributes)) {
+                                            // Create a test selection with this value
+                                            $testSelection = $selectedAttributes;
+                                            $testSelection[$attribute->id] = $value->id;
+
+                                            // Check if any variant exists with this combination
+                                            $availableVariants = $product->variants->filter(function($variant) use ($testSelection) {
+                                                if (!$variant->is_active || $variant->stock_quantity <= 0) {
+                                                    return false;
+                                                }
+
+                                                // Check if variant has all the test selection attributes
+                                                foreach ($testSelection as $attrId => $valueId) {
+                                                    $hasAttribute = $variant->attributeValues->contains(function($av) use ($attrId, $valueId) {
+                                                        return $av->attribute_id == $attrId && $av->id == $valueId;
+                                                    });
+                                                    if (!$hasAttribute) {
+                                                        return false;
+                                                    }
+                                                }
+                                                return true;
+                                            });
+
+                                            $isAvailable = $availableVariants->isNotEmpty();
+                                        } else {
+                                            // No selections yet, check if this value exists in any active variant
+                                            $isAvailable = $product->variants->where('is_active', true)
+                                                ->where('stock_quantity', '>', 0)
+                                                ->filter(function($variant) use ($value) {
+                                                    return $variant->attributeValues->contains('id', $value->id);
+                                                })->isNotEmpty();
+                                        }
                                     @endphp
                                     <button wire:click="selectAttributeValue({{ $attribute->id }}, {{ $value->id }})"
                                             class="px-4 py-3 border-2 rounded-lg font-medium transition-all duration-200 relative
@@ -530,13 +588,6 @@
 </div>
 
 @push('scripts')
-<!-- Variant Combinations Data -->
-@if($product->has_variants && !empty($variantCombinationsMatrix))
-<script type="application/json" data-variant-combinations>
-{!! json_encode($variantCombinationsMatrix) !!}
-</script>
-@endif
-
 <script>
     // Handle dynamic specification updates when variants change
     document.addEventListener('livewire:initialized', () => {
@@ -544,12 +595,6 @@
         Livewire.on('variantChanged', (data) => {
             // Update specifications dynamically
             updateSpecifications(data.variantId);
-        });
-
-        // Listen for attribute selection changes
-        Livewire.on('attributeSelectionChanged', (data) => {
-            // Update frontend availability indicators
-            updateAttributeAvailability(data.availabilityData);
         });
     });
 
@@ -626,29 +671,6 @@
         `;
 
         return div;
-    }
-
-    function updateAttributeAvailability(availabilityData) {
-        // Update attribute value buttons based on availability
-        Object.entries(availabilityData).forEach(([attributeId, data]) => {
-            const attributeContainer = document.querySelector(`[data-attribute-id="${attributeId}"]`);
-            if (!attributeContainer) return;
-
-            // Update button states
-            const buttons = attributeContainer.querySelectorAll('[data-value-id]');
-            buttons.forEach(button => {
-                const valueId = parseInt(button.dataset.valueId);
-                const isAvailable = data.available_values.includes(valueId);
-
-                if (isAvailable) {
-                    button.classList.remove('opacity-50', 'cursor-not-allowed');
-                    button.removeAttribute('disabled');
-                } else {
-                    button.classList.add('opacity-50', 'cursor-not-allowed');
-                    button.setAttribute('disabled', 'true');
-                }
-            });
-        });
     }
 </script>
 @endpush

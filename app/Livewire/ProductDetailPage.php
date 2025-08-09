@@ -5,7 +5,6 @@ namespace App\Livewire;
 use App\Helpers\CartManagement;
 use App\Livewire\Partials\Navbar;
 use App\Models\Product;
-use App\Models\ProductVariant;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
 
@@ -94,42 +93,6 @@ class ProductDetailPage extends Component
     {
         $this->selectedAttributes[$attributeId] = $valueId;
         $this->findMatchingVariant();
-
-        // Dispatch event with availability data for frontend filtering
-        $this->dispatch('attributeSelectionChanged', [
-            'selectedAttributes' => $this->selectedAttributes,
-            'availabilityData' => $this->getAttributeAvailabilityData()
-        ]);
-    }
-
-    /**
-     * Get availability data for all attributes based on current selections
-     */
-    public function getAttributeAvailabilityData()
-    {
-        $availabilityData = [];
-
-        foreach ($this->productAttributes as $attribute) {
-            $availableValues = $this->product->getAvailableAttributeValues(
-                $attribute->id,
-                $this->selectedAttributes
-            );
-
-            $availabilityData[$attribute->id] = [
-                'available_values' => $availableValues->pluck('id')->toArray(),
-                'total_values' => $attribute->activeValues->pluck('id')->toArray()
-            ];
-        }
-
-        return $availabilityData;
-    }
-
-    /**
-     * Get variant combinations matrix for frontend caching
-     */
-    public function getVariantCombinationsMatrix()
-    {
-        return $this->product->getVariantCombinationsMatrix();
     }
 
     public function findMatchingVariant()
@@ -148,15 +111,17 @@ class ProductDetailPage extends Component
 
         // Only try to find a complete match if we have all required attributes selected
         if (count($this->selectedAttributes) >= $requiredAttributeCount) {
-            // Use optimized variant matching method
-            $variant = $this->product->findVariantByAttributes($this->selectedAttributes);
+            // Find variant that matches all selected attributes
+            $variant = $this->product->variants()
+                ->whereHas('attributeValues', function ($query) {
+                    $query->whereIn('product_attribute_value_id', array_values($this->selectedAttributes));
+                }, '=', count($this->selectedAttributes))
+                ->where('is_active', true)
+                ->first();
 
             if ($variant) {
                 $this->selectedVariant = $variant;
                 $this->updateCurrentImageForVariant();
-
-                // Dispatch event for any listeners (like specifications update)
-                $this->dispatch('variantChanged', ['variantId' => $variant->id]);
             } else {
                 // No matching variant found - this combination doesn't exist
                 $this->selectedVariant = null;
@@ -450,7 +415,6 @@ class ProductDetailPage extends Component
             'totalReviews' => $this->totalReviews,
             'productAttributes' => $this->productAttributes,
             'reviews' => $this->reviews,
-            'variantCombinationsMatrix' => $this->getVariantCombinationsMatrix(),
         ])->layoutData(['title' => $this->title]);
     }
 }

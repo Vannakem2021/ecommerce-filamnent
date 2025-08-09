@@ -4,7 +4,6 @@ namespace App\Helpers;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Services\CartValidationService;
-use App\Services\InventoryReservationService;
 use Illuminate\Support\Facades\Cookie;
 
 class CartManagement {
@@ -79,18 +78,6 @@ class CartManagement {
             $itemData = self::getItemData($item_id, $type, $product_id);
 
             if ($itemData) {
-                // Reserve inventory for this cart item
-                $reservation = self::reserveInventory(
-                    $itemData['product_id'],
-                    $itemData['variant_id'],
-                    $quantity,
-                    $item_key
-                );
-
-                if (!$reservation['success']) {
-                    return ['error' => $reservation['message']];
-                }
-
                 $cart_items[] = [
                     'item_key' => $item_key,
                     'product_id' => $itemData['product_id'],
@@ -101,8 +88,7 @@ class CartManagement {
                     'quantity' => $quantity,
                     'unit_amount' => $itemData['price'],
                     'total_amount' => $itemData['price'] * $quantity,
-                    'type' => $type,
-                    'reservation_id' => $reservation['reservation']->id ?? null
+                    'type' => $type
                 ];
             }
         }
@@ -120,8 +106,6 @@ class CartManagement {
         foreach ($cart_items as $key => $item)
         {
             if ($item['item_key'] == $item_key){
-                // Release inventory reservation when removing item
-                self::releaseInventoryReservation($item_key);
                 unset($cart_items[$key]);
             }
         }
@@ -292,48 +276,36 @@ class CartManagement {
         return null;
     }
 
-    // Validate inventory before adding to cart (with reservation support)
+    // Validate inventory before adding to cart
     static public function validateInventory($product_id, $variant_id = null, $quantity = 1)
     {
-        $reservationService = new InventoryReservationService();
+        if ($variant_id) {
+            $variant = ProductVariant::find($variant_id);
+            if (!$variant) {
+                return ['valid' => false, 'message' => 'Product variant not found'];
+            }
 
-        // Check if we can reserve the requested quantity
-        if (!$reservationService->canReserve($product_id, $quantity, $variant_id)) {
-            $available = $reservationService->getAvailableInventory($product_id, $variant_id);
-            return [
-                'valid' => false,
-                'message' => "Insufficient stock. Available: {$available}, Requested: {$quantity}"
-            ];
+            if ($variant->track_inventory && $variant->stock_quantity < $quantity) {
+                return [
+                    'valid' => false,
+                    'message' => "Insufficient stock. Available: {$variant->stock_quantity}, Requested: {$quantity}"
+                ];
+            }
+        } else {
+            $product = Product::find($product_id);
+            if (!$product) {
+                return ['valid' => false, 'message' => 'Product not found'];
+            }
+
+            if ($product->track_inventory && $product->stock_quantity < $quantity) {
+                return [
+                    'valid' => false,
+                    'message' => "Insufficient stock. Available: {$product->stock_quantity}, Requested: {$quantity}"
+                ];
+            }
         }
 
         return ['valid' => true, 'message' => 'Stock available'];
-    }
-
-    // Reserve inventory when adding to cart
-    static public function reserveInventory($product_id, $variant_id = null, $quantity = 1, $item_key = null)
-    {
-        $reservationService = new InventoryReservationService();
-
-        $sessionId = session()->getId();
-        $userId = auth()->id();
-
-        return $reservationService->reserve(
-            $product_id,
-            $quantity,
-            $variant_id,
-            $sessionId,
-            $userId,
-            'cart',
-            $item_key,
-            30 // 30 minutes expiration
-        );
-    }
-
-    // Release inventory reservation when removing from cart
-    static public function releaseInventoryReservation($item_key)
-    {
-        $reservationService = new InventoryReservationService();
-        return $reservationService->releaseByReference('cart', $item_key);
     }
 
 }
