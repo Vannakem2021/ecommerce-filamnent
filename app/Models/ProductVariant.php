@@ -64,6 +64,13 @@ class ProductVariant extends Model
                     ->update(['is_default' => false]);
             }
         });
+
+        // Auto-convert attributes to options when variant is saved
+        static::saved(function ($variant) {
+            if (empty($variant->options)) {
+                $variant->convertAttributesToOptions();
+            }
+        });
     }
 
     /**
@@ -412,6 +419,32 @@ class ProductVariant extends Model
             ->first(function ($variant) use ($selectedOptions) {
                 return ($variant->options ?? []) === $selectedOptions;
             });
+    }
+
+    /**
+     * Convert attribute values to JSON options (migration helper)
+     */
+    public function convertAttributesToOptions()
+    {
+        if (!empty($this->options)) {
+            return; // Already has options
+        }
+
+        $options = [];
+
+        // Always reload attribute values to ensure we have the latest data
+        $this->load('attributeValues.attribute');
+
+        foreach ($this->attributeValues as $attributeValue) {
+            if ($attributeValue->attribute) {
+                $options[$attributeValue->attribute->name] = $attributeValue->value;
+            }
+        }
+
+        if (!empty($options)) {
+            $this->options = $options;
+            $this->saveQuietly(); // Use saveQuietly to avoid infinite loop
+        }
     }
 
     /**

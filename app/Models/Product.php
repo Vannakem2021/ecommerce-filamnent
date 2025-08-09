@@ -582,9 +582,9 @@ class Product extends Model
             'compare_price_cents' => $this->compare_price_cents,
             'cost_price_cents' => $this->cost_price_cents,
             'stock_quantity' => $this->stock_quantity,
-            'stock_status' => $this->stock_status,
-            'low_stock_threshold' => $this->low_stock_threshold,
-            'track_inventory' => $this->track_inventory,
+            'stock_status' => $this->stock_status ?: 'in_stock', // Default to in_stock if not set
+            'low_stock_threshold' => $this->low_stock_threshold ?: 5,
+            'track_inventory' => $this->track_inventory ?? true,
             'is_active' => true,
             'is_default' => $this->variants()->count() === 0, // First variant is default
         ]);
@@ -599,6 +599,9 @@ class Product extends Model
         // Regenerate SKU after attributes are attached
         $variant->sku = $variant->generateSku();
         $variant->save();
+
+        // Convert attributes to JSON options for simplified system
+        $variant->convertAttributesToOptions();
 
         return $variant;
     }

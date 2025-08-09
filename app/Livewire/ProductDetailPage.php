@@ -60,6 +60,8 @@ class ProductDetailPage extends Component
         // Handle both slug string and Product model (for testing)
         if ($slug instanceof Product) {
             $this->product = $slug;
+            // Ensure variants are loaded for testing
+            $this->product->load(['category', 'brand', 'variants']);
         } else {
             $this->product = Product::with([
                 'category',

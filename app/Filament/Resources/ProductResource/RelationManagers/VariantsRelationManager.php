@@ -247,6 +247,8 @@ class VariantsRelationManager extends RelationManager
                     ->after(function ($record) {
                         // Regenerate SKU after editing (in case attributes changed)
                         $record->regenerateSku();
+                        // Convert attributes to JSON options for simplified system
+                        $record->convertAttributesToOptions();
                     }),
 
                 Tables\Actions\DeleteAction::make(),
@@ -275,6 +277,30 @@ class VariantsRelationManager extends RelationManager
                         })
                         ->requiresConfirmation()
                         ->modalDescription('This will regenerate SKUs for all selected variants based on their current attributes.'),
+
+                    Tables\Actions\BulkAction::make('convert_to_json_options')
+                        ->label('Convert to JSON Options')
+                        ->icon('heroicon-o-arrow-path-rounded-square')
+                        ->color('success')
+                        ->action(function ($records) {
+                            $count = 0;
+                            foreach ($records as $record) {
+                                $oldOptions = $record->options;
+                                $record->convertAttributesToOptions();
+                                $record->refresh();
+                                if ($record->options !== $oldOptions) {
+                                    $count++;
+                                }
+                            }
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Options Converted')
+                                ->body("Converted {$count} variants to JSON options system.")
+                                ->success()
+                                ->send();
+                        })
+                        ->requiresConfirmation()
+                        ->modalDescription('This will convert attribute values to JSON options for the simplified variant system.'),
 
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
