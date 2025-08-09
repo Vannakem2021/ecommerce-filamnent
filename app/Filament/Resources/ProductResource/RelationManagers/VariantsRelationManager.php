@@ -161,11 +161,19 @@ class VariantsRelationManager extends RelationManager
 
                 Tables\Columns\IconColumn::make('is_default')
                     ->label('Default')
-                    ->boolean(),
+                    ->boolean()
+                    ->trueIcon('heroicon-o-star')
+                    ->falseIcon('heroicon-o-star')
+                    ->trueColor('warning')
+                    ->falseColor('gray'),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
-                    ->boolean(),
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('danger'),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('stock_status')

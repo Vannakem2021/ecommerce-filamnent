@@ -72,6 +72,7 @@ class BrandResource extends Resource
 
                         FileUpload::make('image')
                             ->image()
+                            ->disk('public')
                             ->directory('brands'),
 
                         Toggle::make('is_active')
@@ -88,15 +89,19 @@ class BrandResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
 
-                Tables\Columns\ImageColumn::make('image'),
+                Tables\Columns\ImageColumn::make('image')
+                    ->disk('public'),
 
                 Tables\Columns\TextColumn::make('slug')
                     ->searchable(),
 
-                // Tables\Columns\IconColumn::make('is_active')
-                //     ->boolean(),
-
-                Tables\Columns\ToggleColumn::make('is_active'),
+                Tables\Columns\IconColumn::make('is_active')
+                    ->label('Active')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('danger'),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -109,7 +114,13 @@ class BrandResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                Tables\Filters\TernaryFilter::make('is_active')
+                    ->label('Status')
+                    ->boolean()
+                    ->trueLabel('Active only')
+                    ->falseLabel('Inactive only')
+                    ->native(false)
+                    ->placeholder('All brands'),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([

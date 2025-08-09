@@ -164,6 +164,117 @@ class Product extends Model
             ->get();
     }
 
+    /**
+     * Get available attribute values based on current selections and stock
+     */
+    public function getAvailableAttributeValues($attributeId, $selectedAttributes = [])
+    {
+        $query = $this->variants()
+            ->where('is_active', true)
+            ->where('stock_quantity', '>', 0);
+
+        // Apply filters for already selected attributes (except the current one)
+        foreach ($selectedAttributes as $selectedAttrId => $selectedValueId) {
+            if ($selectedAttrId != $attributeId) {
+                $query->whereHas('attributeValues', function ($q) use ($selectedAttrId, $selectedValueId) {
+                    $q->where('product_attribute_id', $selectedAttrId)
+                      ->where('product_attribute_value_id', $selectedValueId);
+                });
+            }
+        }
+
+        // Get all variants that match the current selection
+        $matchingVariants = $query->with('attributeValues.attribute')->get();
+
+        // Extract attribute values for the requested attribute
+        $availableValues = $matchingVariants
+            ->pluck('attributeValues')
+            ->flatten()
+            ->filter(function ($attributeValue) use ($attributeId) {
+                return $attributeValue->attribute && $attributeValue->attribute->id == $attributeId;
+            })
+            ->unique('id')
+            ->sortBy('sort_order')
+            ->values();
+
+        return $availableValues;
+    }
+
+    /**
+     * Check if a specific attribute combination is available
+     */
+    public function isAttributeCombinationAvailable($selectedAttributes)
+    {
+        if (empty($selectedAttributes)) {
+            return true;
+        }
+
+        $variant = $this->variants()
+            ->where('is_active', true)
+            ->where('stock_quantity', '>', 0)
+            ->whereHas('attributeValues', function ($query) use ($selectedAttributes) {
+                $query->whereIn('product_attribute_value_id', array_values($selectedAttributes));
+            }, '=', count($selectedAttributes))
+            ->first();
+
+        return $variant !== null;
+    }
+
+    /**
+     * Find variant by attribute combination (optimized)
+     */
+    public function findVariantByAttributes($selectedAttributes)
+    {
+        if (empty($selectedAttributes)) {
+            return null;
+        }
+
+        // Use a more efficient query with joins
+        return ProductVariant::query()
+            ->where('product_id', $this->id)
+            ->where('is_active', true)
+            ->select('product_variants.*')
+            ->join('product_variant_attributes as pva', 'product_variants.id', '=', 'pva.product_variant_id')
+            ->whereIn('pva.product_attribute_value_id', array_values($selectedAttributes))
+            ->groupBy('product_variants.id')
+            ->havingRaw('COUNT(DISTINCT pva.product_attribute_value_id) = ?', [count($selectedAttributes)])
+            ->with(['attributeValues.attribute'])
+            ->first();
+    }
+
+    /**
+     * Get variant combinations matrix for frontend caching
+     */
+    public function getVariantCombinationsMatrix()
+    {
+        if (!$this->has_variants) {
+            return [];
+        }
+
+        $variants = $this->variants()
+            ->where('is_active', true)
+            ->with(['attributeValues.attribute'])
+            ->get();
+
+        $matrix = [];
+        foreach ($variants as $variant) {
+            $combination = [];
+            foreach ($variant->attributeValues as $attributeValue) {
+                $combination[$attributeValue->attribute->id] = $attributeValue->id;
+            }
+
+            $matrix[] = [
+                'variant_id' => $variant->id,
+                'combination' => $combination,
+                'price_cents' => $variant->price_cents,
+                'stock_quantity' => $variant->stock_quantity,
+                'is_available' => $variant->stock_quantity > 0
+            ];
+        }
+
+        return $matrix;
+    }
+
     // ===== PRICE ACCESSORS AND MUTATORS =====
 
     /**
@@ -379,11 +490,15 @@ class Product extends Model
      */
     public function getEffectivePriceAttribute()
     {
-        if ($this->has_variants && $this->defaultVariant) {
-            return $this->defaultVariant->price;
-        }
+        try {
+            if ($this->has_variants && $this->defaultVariant) {
+                return $this->defaultVariant->price ?? $this->price ?? 0;
+            }
 
-        return $this->price;
+            return $this->price ?? 0;
+        } catch (Exception $e) {
+            return $this->price ?? 0;
+        }
     }
 
     /**
@@ -448,12 +563,16 @@ class Product extends Model
      */
     public function getLowestPriceAttribute()
     {
-        if ($this->has_variants) {
-            $lowestPriceCents = $this->activeVariants()->min('price_cents');
-            return $lowestPriceCents ? $lowestPriceCents / 100 : 0;
-        }
+        try {
+            if ($this->has_variants && $this->activeVariants) {
+                $lowestPriceCents = $this->activeVariants()->min('price_cents');
+                return $lowestPriceCents ? $lowestPriceCents / 100 : ($this->price ?? 0);
+            }
 
-        return $this->price;
+            return $this->price ?? 0;
+        } catch (Exception $e) {
+            return $this->price ?? 0;
+        }
     }
 
     /**
@@ -461,12 +580,16 @@ class Product extends Model
      */
     public function getHighestPriceAttribute()
     {
-        if ($this->has_variants) {
-            $highestPriceCents = $this->activeVariants()->max('price_cents');
-            return $highestPriceCents ? $highestPriceCents / 100 : 0;
-        }
+        try {
+            if ($this->has_variants && $this->activeVariants) {
+                $highestPriceCents = $this->activeVariants()->max('price_cents');
+                return $highestPriceCents ? $highestPriceCents / 100 : ($this->price ?? 0);
+            }
 
-        return $this->price;
+            return $this->price ?? 0;
+        } catch (Exception $e) {
+            return $this->price ?? 0;
+        }
     }
 
     /**
@@ -475,21 +598,31 @@ class Product extends Model
     public function getPriceRangeAttribute()
     {
         if (!$this->has_variants) {
-            return null;
+            return [
+                'min' => $this->price ?? 0,
+                'max' => $this->price ?? 0,
+                'formatted' => '₹' . number_format($this->price ?? 0, 2)
+            ];
         }
 
-        $lowest = $this->lowest_price;
-        $highest = $this->highest_price;
+        try {
+            $lowest = $this->lowest_price ?? 0;
+            $highest = $this->highest_price ?? 0;
 
-        if ($lowest === $highest) {
-            return null; // All variants have same price
+            return [
+                'min' => $lowest,
+                'max' => $highest,
+                'formatted' => $lowest === $highest
+                    ? '₹' . number_format($lowest, 2)
+                    : '₹' . number_format($lowest, 2) . ' - ₹' . number_format($highest, 2)
+            ];
+        } catch (Exception $e) {
+            return [
+                'min' => $this->price ?? 0,
+                'max' => $this->price ?? 0,
+                'formatted' => '₹' . number_format($this->price ?? 0, 2)
+            ];
         }
-
-        return [
-            'min' => $lowest,
-            'max' => $highest,
-            'formatted' => '₹' . number_format($lowest, 2) . ' - ₹' . number_format($highest, 2)
-        ];
     }
 
     /**
@@ -577,5 +710,78 @@ class Product extends Model
         $variant->save();
 
         return $variant;
+    }
+
+    // ===== SPECIFICATION RELATIONSHIPS =====
+
+    /**
+     * Get the product-level specification values
+     */
+    public function specificationValues()
+    {
+        return $this->hasMany(ProductSpecificationValue::class);
+    }
+
+    /**
+     * Get specification values with their attributes
+     */
+    public function specificationsWithAttributes()
+    {
+        return $this->specificationValues()
+            ->with(['specificationAttribute', 'specificationAttributeOption'])
+            ->whereHas('specificationAttribute', function ($query) {
+                $query->where('is_active', true);
+            })
+            ->join('specification_attributes', 'specification_attributes.id', '=', 'product_specification_values.specification_attribute_id')
+            ->orderBy('specification_attributes.sort_order')
+            ->orderBy('specification_attributes.name');
+    }
+
+    /**
+     * Get all specifications for this product (product-level + default variant-level)
+     */
+    public function getAllSpecifications()
+    {
+        $productSpecs = $this->specificationsWithAttributes()->get();
+
+        // If product has variants, get default variant specs
+        $variantSpecs = collect();
+        if ($this->has_variants && $this->defaultVariant) {
+            $variantSpecs = $this->defaultVariant->specificationsWithAttributes()->get();
+        }
+
+        return $productSpecs->concat($variantSpecs)->unique('specification_attribute_id');
+    }
+
+    /**
+     * Set a product-level specification value
+     */
+    public function setSpecificationValue($attributeId, $value)
+    {
+        $specValue = $this->specificationValues()
+            ->where('specification_attribute_id', $attributeId)
+            ->first();
+
+        if (!$specValue) {
+            $specValue = new ProductSpecificationValue([
+                'product_id' => $this->id,
+                'specification_attribute_id' => $attributeId,
+            ]);
+        }
+
+        $specValue->setValue($value);
+        $specValue->save();
+
+        return $specValue;
+    }
+
+    /**
+     * Get a product-level specification value
+     */
+    public function getSpecificationValue($attributeId)
+    {
+        return $this->specificationValues()
+            ->where('specification_attribute_id', $attributeId)
+            ->first();
     }
 }

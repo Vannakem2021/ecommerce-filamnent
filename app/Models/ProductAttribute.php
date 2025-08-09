@@ -14,12 +14,18 @@ class ProductAttribute extends Model
         'name',
         'slug',
         'type',
+        'purpose',
+        'data_type',
+        'unit',
+        'is_filterable',
         'is_required',
         'is_active',
         'sort_order',
+        'description',
     ];
 
     protected $casts = [
+        'is_filterable' => 'boolean',
         'is_required' => 'boolean',
         'is_active' => 'boolean',
     ];
@@ -97,5 +103,81 @@ class ProductAttribute extends Model
             'text' => 'Text',
             default => 'Select'
         };
+    }
+
+    /**
+     * Scope for variant attributes
+     */
+    public function scopeVariantAttributes($query)
+    {
+        return $query->where('purpose', 'variant');
+    }
+
+    /**
+     * Scope for specification attributes
+     */
+    public function scopeSpecificationAttributes($query)
+    {
+        return $query->where('purpose', 'specification');
+    }
+
+    /**
+     * Scope for filterable attributes
+     */
+    public function scopeFilterable($query)
+    {
+        return $query->where('is_filterable', true);
+    }
+
+
+
+    /**
+     * Get the purpose label
+     */
+    public function getPurposeLabelAttribute()
+    {
+        return match($this->purpose) {
+            'variant' => 'Variant Attribute',
+            'specification' => 'Specification',
+            default => 'Variant Attribute'
+        };
+    }
+
+    /**
+     * Get the data type label
+     */
+    public function getDataTypeLabelAttribute()
+    {
+        return match($this->data_type) {
+            'text' => 'Text',
+            'number' => 'Number',
+            'boolean' => 'Yes/No',
+            'enum' => 'Select Option',
+            default => 'Select Option'
+        };
+    }
+
+    /**
+     * Check if this is a variant attribute
+     */
+    public function getIsVariantAttributeAttribute()
+    {
+        return $this->purpose === 'variant';
+    }
+
+    /**
+     * Check if this is a specification attribute
+     */
+    public function getIsSpecificationAttributeAttribute()
+    {
+        return $this->purpose === 'specification';
+    }
+
+    /**
+     * Get formatted display name with unit
+     */
+    public function getDisplayNameAttribute()
+    {
+        return $this->name . ($this->unit ? " ({$this->unit})" : '');
     }
 }

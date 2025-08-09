@@ -73,8 +73,29 @@ class LatestOrders extends BaseWidget
 
                 TextColumn::make('payment_status')
                     ->label('Payment Status')
-                    ->sortable()
                     ->badge()
+                    ->color(fn (string $state): string => match($state){
+                        'paid' => 'success',
+                        'pending' => 'warning',
+                        'failed' => 'danger',
+                        'refunded' => 'info',
+                        default => 'gray',
+                    })
+                    ->icon(fn (string $state): string => match($state){
+                        'paid' => 'heroicon-m-check-circle',
+                        'pending' => 'heroicon-m-clock',
+                        'failed' => 'heroicon-m-x-circle',
+                        'refunded' => 'heroicon-m-arrow-uturn-left',
+                        default => 'heroicon-m-question-mark-circle',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match($state){
+                        'paid' => 'Paid',
+                        'pending' => 'Pending',
+                        'failed' => 'Failed',
+                        'refunded' => 'Refunded',
+                        default => ucfirst($state),
+                    })
+                    ->sortable()
                     ->searchable(),
 
                 TextColumn::make('created_at')

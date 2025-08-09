@@ -15,6 +15,7 @@ use App\Livewire\ProductDetailPage;
 use App\Livewire\ProductsPage;
 use App\Livewire\SuccessPage;
 use App\Livewire\UserProfilePage;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 
@@ -43,6 +44,7 @@ Route::get('/my-orders/{order}', MyOrderDetailPage::class)->name('my-order-detai
 Route::get('/profile', UserProfilePage::class)->name('profile')->middleware('auth');
 
 
+
 // Auth routes
 
 Route::get('/login', LoginPage::class)->name('login')->middleware('guest');
@@ -52,6 +54,13 @@ Route::get('/register', RegisterPage::class)->name('register')->middleware('gues
 Route::get('/forgot-password', ForgotPasswordPage::class)->name('forgot-password')->middleware('guest');
 
 Route::get('/reset-password', ResetPasswordPage::class)->name('reset-password')->middleware('guest');
+
+Route::post('/logout', function () {
+    Auth::logout();
+    request()->session()->invalidate();
+    request()->session()->regenerateToken();
+    return redirect('/');
+})->name('logout')->middleware('auth');
 
 Route::get('/success', SuccessPage::class)->name('success');
 

@@ -104,6 +104,7 @@ class ProductResource extends Resource
                     Section::make('Images')->schema([
                         FileUpload::make('images')
                             ->multiple()
+                            ->disk('public')
                             ->directory('products')
                             ->maxFiles(5)
                             ->reorderable()
@@ -288,16 +289,36 @@ class ProductResource extends Resource
                     }),
 
                 Tables\Columns\IconColumn::make('is_active')
-                    ->boolean(),
+                    ->label('Active')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('danger'),
 
                 Tables\Columns\IconColumn::make('is_featured')
-                    ->boolean(),
+                    ->label('Featured')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-star')
+                    ->falseIcon('heroicon-o-star')
+                    ->trueColor('warning')
+                    ->falseColor('gray'),
 
                 Tables\Columns\IconColumn::make('in_stock')
-                    ->boolean(),
+                    ->label('In Stock')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('danger'),
 
                 Tables\Columns\IconColumn::make('on_sale')
-                    ->boolean(),
+                    ->label('On Sale')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-tag')
+                    ->falseIcon('heroicon-o-tag')
+                    ->trueColor('info')
+                    ->falseColor('gray'),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()

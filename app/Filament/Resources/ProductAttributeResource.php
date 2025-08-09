@@ -117,11 +117,19 @@ class ProductAttributeResource extends Resource
 
                 Tables\Columns\IconColumn::make('is_required')
                     ->label('Required')
-                    ->boolean(),
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('warning')
+                    ->falseColor('gray'),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
-                    ->boolean(),
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('danger'),
 
                 Tables\Columns\TextColumn::make('sort_order')
                     ->label('Sort Order')

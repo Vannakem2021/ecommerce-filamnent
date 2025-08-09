@@ -233,6 +233,28 @@ class OrderResource extends Resource
 
                 TextColumn::make('payment_status')
                     ->label('Payment Status')
+                    ->badge()
+                    ->color(fn (string $state): string => match($state){
+                        'paid' => 'success',
+                        'pending' => 'warning',
+                        'failed' => 'danger',
+                        'refunded' => 'info',
+                        default => 'gray',
+                    })
+                    ->icon(fn (string $state): string => match($state){
+                        'paid' => 'heroicon-m-check-circle',
+                        'pending' => 'heroicon-m-clock',
+                        'failed' => 'heroicon-m-x-circle',
+                        'refunded' => 'heroicon-m-arrow-uturn-left',
+                        default => 'heroicon-m-question-mark-circle',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match($state){
+                        'paid' => 'Paid',
+                        'pending' => 'Pending',
+                        'failed' => 'Failed',
+                        'refunded' => 'Refunded',
+                        default => ucfirst($state),
+                    })
                     ->searchable()
                     ->sortable(),
 
@@ -245,14 +267,30 @@ class OrderResource extends Resource
                     ->sortable()
                     ->searchable(),
 
-                SelectColumn::make('status')
-                    ->options([
+                TextColumn::make('status')
+                    ->label('Order Status')
+                    ->badge()
+                    ->color(fn (string $state): string => match($state){
+                        'new' => 'info',
+                        'processing' => 'warning',
+                        'shipped' => 'success',
+                        'delivered' => 'success',
+                        'cancelled' => 'danger',
+                    })
+                    ->icon(fn (string $state): string => match($state){
+                        'new' => 'heroicon-m-sparkles',
+                        'processing' => 'heroicon-m-arrow-path',
+                        'shipped' => 'heroicon-m-truck',
+                        'delivered' => 'heroicon-m-check-badge',
+                        'cancelled' => 'heroicon-m-x-circle',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match($state){
                         'new' => 'New',
                         'processing' => 'Processing',
                         'shipped' => 'Shipped',
                         'delivered' => 'Delivered',
                         'cancelled' => 'Cancelled',
-                    ])
+                    })
                     ->searchable()
                     ->sortable(),
 
@@ -267,7 +305,50 @@ class OrderResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true)
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('status')
+                    ->label('Order Status')
+                    ->options([
+                        'new' => 'New',
+                        'processing' => 'Processing',
+                        'shipped' => 'Shipped',
+                        'delivered' => 'Delivered',
+                        'cancelled' => 'Cancelled',
+                    ]),
+
+                Tables\Filters\SelectFilter::make('payment_status')
+                    ->label('Payment Status')
+                    ->options([
+                        'paid' => 'Paid',
+                        'pending' => 'Pending',
+                        'failed' => 'Failed',
+                        'refunded' => 'Refunded',
+                    ]),
+
+                Tables\Filters\SelectFilter::make('payment_method')
+                    ->label('Payment Method')
+                    ->options([
+                        'stripe' => 'Stripe',
+                        'code' => 'Cash on Delivery',
+                    ]),
+
+                Tables\Filters\Filter::make('created_at')
+                    ->form([
+                        Forms\Components\DatePicker::make('created_from')
+                            ->label('Order Date From'),
+                        Forms\Components\DatePicker::make('created_until')
+                            ->label('Order Date Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['created_from'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('created_at', '>=', $date),
+                            )
+                            ->when(
+                                $data['created_until'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('created_at', '<=', $date),
+                            );
+                    }),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([

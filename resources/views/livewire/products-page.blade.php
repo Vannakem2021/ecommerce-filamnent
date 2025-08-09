@@ -1,141 +1,205 @@
-<div class="w-full max-w-[80rem] py-10 px-4 sm:px-6 lg:px-8 mx-auto">
-    <section class="py-10 bg-gray-50 font-poppins dark:bg-gray-800 rounded-lg">
-      <div class="px-4 py-4 mx-auto max-w-7xl lg:py-6 md:px-6">
-        <div class="flex flex-wrap mb-24 -mx-3">
-          <div class="w-full pr-2 lg:w-1/4 lg:block">
-            <div class="p-4 mb-5 bg-white border border-gray-200 dark:border-gray-900 dark:bg-gray-900">
-              <h2 class="text-2xl font-bold dark:text-gray-400"> Categories</h2>
-              <div class="w-16 pb-2 mb-6 border-b border-rose-600 dark:border-gray-400"></div>
-              <ul>
-
-                @foreach ($categories as $category)
-
-                  <li class="mb-4" wire:key="{{ $category->id }}">
-                    <label for="{{ $category->slug }}" class="flex items-center dark:text-gray-400 ">
-                      <input type="checkbox" wire:model.live="selected_categories" id="{{ $category->slug }}" value="{{ $category->id }}" class="w-4 h-4 mr-2">
-                      <span class="text-lg">{{ $category->name }}</span>
-                    </label>
-                  </li>
-
-                @endforeach
-
-              </ul>
-
-            </div>
-            <div class="p-4 mb-5 bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-900">
-              <h2 class="text-2xl font-bold dark:text-gray-400">Brand</h2>
-              <div class="w-16 pb-2 mb-6 border-b border-rose-600 dark:border-gray-400"></div>
-              <ul>
-
-                @foreach ($brands as $brand)
-
-                  <li class="mb-4" wire:key="{{ $brand->id }}">
-                    <label for="{{ $brand->slug }}" class="flex items-center dark:text-gray-300">
-                      <input type="checkbox" wire:model.live="selected_brands" value="{{ $brand->id }}" id="{{ $brand->slug }}" class="w-4 h-4 mr-2">
-                      <span class="text-lg dark:text-gray-400">{{ $brand->name }}</span>
-                    </label>
-                  </li>
-
-                @endforeach
-
-              </ul>
-            </div>
-            <div class="p-4 mb-5 bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-900">
-              <h2 class="text-2xl font-bold dark:text-gray-400">Product Status</h2>
-              <div class="w-16 pb-2 mb-6 border-b border-rose-600 dark:border-gray-400"></div>
-              <ul>
-
-                <li class="mb-4">
-                  <label for="featured" class="flex items-center dark:text-gray-300">
-                    <input type="checkbox" id="featured" wire:model.live="featured" value="1" class="w-4 h-4 mr-2">
-                    <span class="text-lg dark:text-gray-400">Featured Products</span>
-                  </label>
-                </li>
-
-                <li class="mb-4">
-                  <label for="on_sale" class="flex items-center dark:text-gray-300">
-                    <input type="checkbox" id="on_sale" value="1" wire:model.live="on_sale" class="w-4 h-4 mr-2">
-                    <span class="text-lg dark:text-gray-400">On Sale</span>
-                  </label>
-                </li>
-
-              </ul>
-            </div>
-
-            <div class="p-4 mb-5 bg-white border border-gray-200 dark:bg-gray-900 dark:border-gray-900">
-              <h2 class="text-2xl font-bold dark:text-gray-400">Price</h2>
-              <div class="w-16 pb-2 mb-6 border-b border-rose-600 dark:border-gray-400"></div>
-              <div>
-                <div class="font-semibold">{{ Number::currency($price_range, 'INR') }}</div>
-                <input type="range" wire:model.live="price_range" class="w-full h-1 mb-4 bg-blue-100 rounded appearance-none cursor-pointer" max="500000" value="0" step="1000">
-                <div class="flex justify-between">
-                  <span class="inline-block text-lg font-bold text-blue-400 ">{{ Number::currency(1000, 'INR') }}</span>
-                  <span class="inline-block text-lg font-bold text-blue-400 ">{{ Number::currency(500000, 'INR') }}</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          <div class="w-full px-3 lg:w-3/4">
-            <div class="px-3 mb-4">
-              <div class="items-center justify-between hidden px-3 py-2 bg-gray-100 md:flex dark:bg-gray-900 ">
-                <div class="flex items-center justify-between">
-
-                  <select wire:model.live="sort" class="block w-40 text-base bg-gray-100 cursor-pointer dark:text-gray-400 dark:bg-gray-900">
-
-                    <option value="latest">Sort by latest</option>
-                    <option value="price">Sort by Price</option>
-
-                  </select>
-
-                </div>
-              </div>
-            </div>
-            <div class="flex flex-wrap items-center ">
-
-              @foreach ($products as $product)
-
-                <div class="w-full px-3 mb-6 sm:w-1/2 md:w-1/3" wire:key="{{ $product->id }}">
-                  <div class="border border-gray-300 dark:border-gray-700">
-                    <div class="relative bg-gray-200">
-                      <a wire:navigate href="{{ route('product-details', $product->slug) }}" class="">
-                        <img src="{{ url('storage', $product->images[0]) }}" alt="{{ $product->name }}" class="object-cover w-full h-56 mx-auto ">
-                      </a>
+<div class="bg-gray-50 min-h-screen">
+    <main class="container mx-auto px-4 py-8">
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Filter Sidebar -->
+            <aside class="lg:w-64 flex-shrink-0">
+                <div class="bg-white rounded-xl shadow-md p-6 sticky top-24">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-bold text-gray-900">Filters</h2>
+                        <button
+                            wire:click="resetFilters"
+                            class="text-sm text-custom-teal-600 hover:text-custom-teal-700"
+                        >
+                            Reset All
+                        </button>
                     </div>
-                    <div class="p-3">
-                      <div class="flex items-center justify-between gap-2 mb-2">
-                        <h3 class="text-xl font-medium dark:text-gray-400">
-                          {{ $product->name }}
-                        </h3>
-                      </div>
-                      <p class="text-lg">
-                        <span class="text-green-600 dark:text-green-600">{{ Number::currency($product->price, 'INR') }}</span>
-                      </p>
-                    </div>
-                    <div class="flex justify-center p-4 border-t border-gray-300 dark:border-gray-700">
 
-                      <a wire:click.prevent='addToCart({{ $product->id }})' href="#" class="text-gray-500 flex items-center space-x-2 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-300">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="w-4 h-4 bi bi-cart3 " viewBox="0 0 16 16">
-                          <path d="M0 1.5A.5.5 0 0 1 .5 1H2a.5.5 0 0 1 .485.379L2.89 3H14.5a.5.5 0 0 1 .49.598l-1 5a.5.5 0 0 1-.465.401l-9.397.472L4.415 11H13a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.491-.408L2.01 3.607 1.61 2H.5a.5.5 0 0 1-.5-.5zM3.102 4l.84 4.479 9.144-.459L13.89 4H3.102zM5 12a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-7 1a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"></path>
-                        </svg><span wire:loading.remove wire:target='addToCart({{ $product->id }})'>Add to Cart</span> <span wire:loading wire:target='addToCart({{ $product->id }})'>Adding to cart...</span>
-                      </a>
-
+                    <!-- Categories Filter -->
+                    <div class="mb-6">
+                        <h3 class="font-semibold text-gray-900 mb-3">Categories</h3>
+                        <div class="space-y-2">
+                            @foreach ($categories as $category)
+                                <label class="flex items-center cursor-pointer" wire:key="{{ $category->id }}">
+                                    <input
+                                        type="checkbox"
+                                        wire:model.live="selected_categories"
+                                        id="{{ $category->slug }}"
+                                        value="{{ $category->id }}"
+                                        class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
+                                    >
+                                    <span class="ml-2 text-gray-700">{{ $category->name }}</span>
+                                    <span class="ml-auto text-sm text-gray-500">({{ $category->products_count ?? 0 }})</span>
+                                </label>
+                            @endforeach
+                        </div>
                     </div>
-                  </div>
+                    <!-- Brands Filter -->
+                    <div class="mb-6">
+                        <h3 class="font-semibold text-gray-900 mb-3">Brands</h3>
+                        <div class="space-y-2">
+                            @foreach ($brands as $brand)
+                                <label class="flex items-center cursor-pointer" wire:key="{{ $brand->id }}">
+                                    <input
+                                        type="checkbox"
+                                        wire:model.live="selected_brands"
+                                        value="{{ $brand->id }}"
+                                        id="{{ $brand->slug }}"
+                                        class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
+                                    >
+                                    <span class="ml-2 text-gray-700">{{ $brand->name }}</span>
+                                    <span class="ml-auto text-sm text-gray-500">({{ $brand->products_count ?? 0 }})</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <!-- Product Status Filter -->
+                    <div class="mb-6">
+                        <h3 class="font-semibold text-gray-900 mb-3">Product Status</h3>
+                        <div class="space-y-2">
+                            <label class="flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    id="featured"
+                                    wire:model.live="featured"
+                                    value="1"
+                                    class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
+                                >
+                                <span class="ml-2 text-gray-700">Featured Products</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    id="on_sale"
+                                    value="1"
+                                    wire:model.live="on_sale"
+                                    class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
+                                >
+                                <span class="ml-2 text-gray-700">On Sale</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Price Range Filter -->
+                    <div class="mb-6">
+                        <h3 class="font-semibold text-gray-900 mb-3">Price Range</h3>
+                        <div class="space-y-4">
+                            <div class="text-center">
+                                <span class="font-semibold text-custom-teal-700">{{ Number::currency($price_range, 'INR') }}</span>
+                            </div>
+                            <div class="relative">
+                                <input
+                                    type="range"
+                                    wire:model.live="price_range"
+                                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-custom-teal-600"
+                                    max="500000"
+                                    value="0"
+                                    step="1000"
+                                >
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>{{ Number::currency(1000, 'INR') }}</span>
+                                    <span>{{ Number::currency(500000, 'INR') }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Specification Filters -->
+                    @if($filterableSpecs->isNotEmpty())
+                        @foreach($filterableSpecs as $spec)
+                            <div class="mb-6">
+                                <h3 class="font-semibold text-gray-900 mb-3">{{ $spec->name }}</h3>
+
+                                @if($spec->data_type === 'enum' && $spec->options->isNotEmpty())
+                                    <!-- Enum/Select Filter -->
+                                    <div class="space-y-2">
+                                        @foreach($spec->options as $option)
+                                            <label class="flex items-center cursor-pointer" wire:key="spec-{{ $spec->id }}-{{ $option->id }}">
+                                                <input
+                                                    type="checkbox"
+                                                    wire:model.live="specification_filters.{{ $spec->code }}"
+                                                    value="{{ $option->id }}"
+                                                    class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
+                                                >
+                                                <span class="ml-2 text-gray-700">{{ $option->value }}</span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+
+                                @elseif($spec->data_type === 'number')
+                                    <!-- Numeric Range Filter -->
+                                    <div class="space-y-2">
+                                        <div class="text-center text-sm text-gray-600">
+                                            Min: {{ $specification_filters[$spec->code] ?? 0 }}{{ $spec->unit ? ' ' . $spec->unit : '' }}
+                                        </div>
+                                        <input
+                                            type="range"
+                                            wire:model.live="specification_filters.{{ $spec->code }}"
+                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-custom-teal-600"
+                                            min="0"
+                                            max="{{ $spec->code === 'ram' ? '64' : ($spec->code === 'storage' ? '4096' : '100') }}"
+                                            step="{{ $spec->code === 'ram' ? '4' : ($spec->code === 'storage' ? '128' : '1') }}"
+                                        >
+                                    </div>
+
+                                @elseif($spec->data_type === 'boolean')
+                                    <!-- Boolean Filter -->
+                                    <div class="space-y-2">
+                                        <label class="flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                wire:model.live="specification_filters.{{ $spec->code }}"
+                                                value="1"
+                                                class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
+                                            >
+                                            <span class="ml-2 text-gray-700">Yes</span>
+                                        </label>
+                                    </div>
+                                @endif
+                            </div>
+                        @endforeach
+                    @endif
+                </div>
+            </aside>
+
+            <!-- Products Section -->
+            <div class="flex-1">
+                <!-- Header with Sort and Results Count -->
+                <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-900">All Products</h2>
+                            <p class="text-gray-600 mt-1">
+                                Showing <span class="font-semibold">{{ $products->count() }}</span> of <span class="font-semibold">{{ $products->total() }}</span> results
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <label class="text-gray-700">Sort by:</label>
+                            <select
+                                wire:model.live="sort"
+                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                            >
+                                <option value="latest">Newest First</option>
+                                <option value="price">Price: Low to High</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
-              @endforeach
+                <!-- Products Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
+                    @foreach ($products as $product)
+                        <div wire:key="{{ $product->id }}">
+                            <x-product-card :product="$product" />
+                        </div>
+                    @endforeach
+                </div>
+
+                <!-- Pagination -->
+                <div class="mt-8">
+                    {{ $products->links() }}
+                </div>
             </div>
-            <!-- pagination start -->
-            <div class="flex justify-end mt-6">
-              {{ $products->links() }}
-            </div>
-            <!-- pagination end -->
-          </div>
         </div>
-      </div>
-    </section>
-
+    </main>
 </div>

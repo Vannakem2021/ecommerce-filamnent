@@ -59,7 +59,12 @@ class ProductAttributeValueResource extends Resource
                 Tables\Columns\TextColumn::make('color_code')
                     ->searchable(),
                 Tables\Columns\IconColumn::make('is_active')
-                    ->boolean(),
+                    ->label('Active')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('danger'),
                 Tables\Columns\TextColumn::make('sort_order')
                     ->numeric()
                     ->sortable(),

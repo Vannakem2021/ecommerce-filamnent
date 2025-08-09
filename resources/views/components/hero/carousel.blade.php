@@ -1,5 +1,5 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-    <div class="swiper hero-swiper h-80">
+    <div class="swiper hero-swiper h-96">
         <div class="swiper-wrapper">
             <!-- Slide 1 -->
             <div class="swiper-slide relative">

@@ -79,6 +79,7 @@ class CategoryResource extends Resource
 
                         FileUpload::make('image')
                             ->image()
+                            ->disk('public')
                             ->directory('categories')
                             ->imageEditor()
                             ->imageEditorAspectRatios([
@@ -102,6 +103,7 @@ class CategoryResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\ImageColumn::make('image')
+                    ->disk('public')
                     ->circular()
                     ->size(50)
                     ->defaultImageUrl('https://ui-avatars.com/api/?name=Category&color=7F9CF5&background=EBF4FF'),

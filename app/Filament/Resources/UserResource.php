@@ -78,18 +78,57 @@ class UserResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('name')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('email')
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('email_verified_at')
-                    ->dateTime()
+                    ->searchable()
                     ->sortable(),
+
+                Tables\Columns\IconColumn::make('email_verified_at')
+                    ->label('Email Verified')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-badge')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('warning')
+                    ->getStateUsing(fn ($record) => !is_null($record->email_verified_at)),
+
+                Tables\Columns\TextColumn::make('roles.name')
+                    ->label('Role')
+                    ->badge()
+                    ->color(fn (string $state): string => match($state){
+                        'admin' => 'danger',
+                        'user' => 'success',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => ucfirst($state)),
+
                 Tables\Columns\TextColumn::make('created_at')
+                    ->label('Joined')
                     ->dateTime()
-                    ->sortable(),
+                    ->sortable()
+                    ->since(),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('roles')
+                    ->relationship('roles', 'name')
+                    ->label('Role')
+                    ->multiple()
+                    ->preload(),
+
+                Tables\Filters\TernaryFilter::make('email_verified_at')
+                    ->label('Email Verification')
+                    ->boolean()
+                    ->trueLabel('Verified only')
+                    ->falseLabel('Unverified only')
+                    ->native(false)
+                    ->placeholder('All users')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereNotNull('email_verified_at'),
+                        false: fn (Builder $query) => $query->whereNull('email_verified_at'),
+                        blank: fn (Builder $query) => $query,
+                    ),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([

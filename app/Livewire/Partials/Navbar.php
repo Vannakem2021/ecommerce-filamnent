@@ -16,7 +16,7 @@ class Navbar extends Component
 
     public function mount()
     {
-        $this->total_count = count(CartManagement::getCartItemsFromCookie());
+        $this->total_count = CartManagement::calculateTotalQuantity();
     }
 
     #[On('update-cart-count')]
