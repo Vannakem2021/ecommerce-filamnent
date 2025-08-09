@@ -16,7 +16,8 @@ class ProductDetailPage extends Component
     public $title;
     public $quantity = 1;
     public $selectedVariant = null;
-    public $selectedAttributes = [];
+    public $selectedOptions = []; // Changed from selectedAttributes to selectedOptions (JSON-based)
+    public $availableOptions = []; // Cache available options
     public $currentImage = null;
     public $isWishlisted = false;
     public $reviews = [];
@@ -56,22 +57,27 @@ class ProductDetailPage extends Component
 
     public function mount($slug)
     {
-        $this->product = Product::with([
-            'category',
-            'brand',
-            'variants.attributeValues.attribute',
-            'specificationsWithAttributes.specificationAttribute',
-            'specificationsWithAttributes.specificationAttributeOption',
-            'variants.specificationsWithAttributes.specificationAttribute',
-            'variants.specificationsWithAttributes.specificationAttributeOption'
-        ])->where('slug', $slug)->firstOrFail();
+        // Handle both slug string and Product model (for testing)
+        if ($slug instanceof Product) {
+            $this->product = $slug;
+        } else {
+            $this->product = Product::with([
+                'category',
+                'brand',
+                'variants' // Simplified - no need for complex relationships
+            ])->where('slug', $slug)->firstOrFail();
+        }
 
         $this->title = $this->product->name . " - ByteWebster";
 
-        // Initialize with no variant selected for better UX
-        // Users should progressively select attributes
+        // Initialize simplified variant system
         $this->selectedVariant = null;
-        $this->selectedAttributes = [];
+        $this->selectedOptions = [];
+
+        // Get available options from simplified system
+        if ($this->product->has_variants) {
+            $this->availableOptions = $this->product->getAvailableOptions();
+        }
 
         // Set initial image (use product images, not variant images)
         $this->currentImage = $this->getCurrentImages()[0] ?? null;
@@ -80,67 +86,68 @@ class ProductDetailPage extends Component
         $this->initializeReviews();
     }
 
-    public function initializeSelectedAttributes()
-    {
-        if ($this->selectedVariant) {
-            foreach ($this->selectedVariant->attributeValues as $attributeValue) {
-                $this->selectedAttributes[$attributeValue->attribute->id] = $attributeValue->id;
-            }
-        }
-    }
+    // ========================================
+    // SIMPLIFIED VARIANT SELECTION METHODS
+    // ========================================
 
-    public function selectAttributeValue($attributeId, $valueId)
+    /**
+     * Select an option value (simplified approach)
+     */
+    public function selectOption($optionName, $optionValue)
     {
-        $this->selectedAttributes[$attributeId] = $valueId;
+        $this->selectedOptions[$optionName] = $optionValue;
         $this->findMatchingVariant();
     }
 
+    /**
+     * Find matching variant using JSON options (simplified approach)
+     */
     public function findMatchingVariant()
     {
-        if (empty($this->selectedAttributes)) {
+        if (empty($this->selectedOptions)) {
             $this->selectedVariant = null;
             return;
         }
 
-        // Get total number of required attributes for this product
-        $totalRequiredAttributes = $this->productAttributes->where('is_required', true)->count();
-        $totalAttributes = $this->productAttributes->count();
+        // Find variant that matches selected options
+        $this->selectedVariant = $this->product->findVariantByOptions($this->selectedOptions);
 
-        // Use total attributes if no required attributes are specifically marked
-        $requiredAttributeCount = $totalRequiredAttributes > 0 ? $totalRequiredAttributes : $totalAttributes;
-
-        // Only try to find a complete match if we have all required attributes selected
-        if (count($this->selectedAttributes) >= $requiredAttributeCount) {
-            // Find variant that matches all selected attributes
-            $variant = $this->product->variants()
-                ->whereHas('attributeValues', function ($query) {
-                    $query->whereIn('product_attribute_value_id', array_values($this->selectedAttributes));
-                }, '=', count($this->selectedAttributes))
-                ->where('is_active', true)
-                ->first();
-
-            if ($variant) {
-                $this->selectedVariant = $variant;
-                $this->updateCurrentImageForVariant();
-            } else {
-                // No matching variant found - this combination doesn't exist
-                $this->selectedVariant = null;
-            }
-        } else {
-            // Not all required attributes selected yet
-            $this->selectedVariant = null;
+        if ($this->selectedVariant) {
+            $this->updateCurrentImageForVariant();
         }
+    }
+
+    /**
+     * Check if all required options are selected
+     */
+    public function hasAllRequiredOptions()
+    {
+        if (!$this->product->has_variants) {
+            return true;
+        }
+
+        // For simplified system, we require all available option types to be selected
+        $requiredOptionCount = count($this->availableOptions);
+        return count($this->selectedOptions) >= $requiredOptionCount;
+    }
+
+    /**
+     * Get available values for a specific option
+     */
+    public function getAvailableValuesForOption($optionName)
+    {
+        return $this->availableOptions[$optionName] ?? [];
     }
 
     public function updateCurrentImageForVariant()
     {
         $newImages = $this->getCurrentImages();
 
-        // If variant has its own images, switch to the first one
-        if ($this->selectedVariant && $this->selectedVariant->images && !empty($this->selectedVariant->images)) {
-            $this->currentImage = $newImages[0] ?? null;
+        // If variant has its own image, switch to it (simplified system uses image_url)
+        if ($this->selectedVariant && $this->selectedVariant->image_url) {
+            $this->currentImage = $this->selectedVariant->image_url;
         }
-        // If no variant images, but current image is not in the new image set, switch to first available
+        // If no variant image, but current image is not in the new image set, switch to first available
         elseif (!empty($newImages) && !in_array($this->currentImage, $newImages)) {
             $this->currentImage = $newImages[0];
         }
@@ -158,8 +165,9 @@ class ProductDetailPage extends Component
 
     public function getCurrentImages()
     {
-        if ($this->selectedVariant && $this->selectedVariant->images) {
-            return $this->selectedVariant->images;
+        // For simplified system, use variant image_url or fall back to product images
+        if ($this->selectedVariant && $this->selectedVariant->image_url) {
+            return [$this->selectedVariant->image_url];
         }
 
         return $this->product->images ?? [];
@@ -168,15 +176,16 @@ class ProductDetailPage extends Component
     public function getCurrentPrice()
     {
         if ($this->selectedVariant) {
-            return $this->selectedVariant->price;
+            return $this->selectedVariant->price_cents / 100; // Convert cents to dollars
         }
 
         // If no variant selected, return the lowest price for display
         if ($this->product->has_variants) {
-            return $this->product->lowest_price;
+            $cheapestVariant = $this->product->getCheapestVariant();
+            return $cheapestVariant ? $cheapestVariant->price_cents / 100 : $this->product->price_cents / 100;
         }
 
-        return $this->product->effective_price;
+        return $this->product->price_cents / 100;
     }
 
     public function getCurrentPriceRange()
@@ -186,7 +195,7 @@ class ProductDetailPage extends Component
         }
 
         if ($this->product->has_variants) {
-            $priceRange = $this->product->price_range;
+            $priceRange = $this->product->getPriceRange();
             if ($priceRange && $priceRange['min'] != $priceRange['max']) {
                 return $priceRange;
             }
@@ -251,16 +260,15 @@ class ProductDetailPage extends Component
     public function isInStock()
     {
         if ($this->selectedVariant) {
-            return $this->selectedVariant->stock_status === 'in_stock' && $this->selectedVariant->stock_quantity > 0;
+            return $this->selectedVariant->isInStock(); // Use simplified method
         }
 
-        // If product has variants but no variants exist, or no variant is selected,
-        // fall back to product's own stock status
-        if ($this->product->has_variants && $this->product->variants->isEmpty()) {
-            return $this->product->stock_status === 'in_stock' && $this->product->stock_quantity > 0;
+        // If no variant selected but product has variants, check if any variant is in stock
+        if ($this->product->has_variants) {
+            return $this->product->hasStock(); // Use simplified method
         }
 
-        return $this->product->has_stock;
+        return $this->product->stock_quantity > 0;
     }
 
     public function getStockQuantity()
@@ -269,12 +277,11 @@ class ProductDetailPage extends Component
             return $this->selectedVariant->stock_quantity;
         }
 
-        // If product has variants but no variants exist, fall back to product's own stock
-        if ($this->product->has_variants && $this->product->variants->isEmpty()) {
-            return $this->product->stock_quantity;
+        if ($this->product->has_variants) {
+            return $this->product->getTotalStock(); // Use simplified method
         }
 
-        return $this->product->effective_stock_quantity;
+        return $this->product->stock_quantity;
     }
 
     public function increaseQty()
@@ -331,12 +338,12 @@ class ProductDetailPage extends Component
         }
 
         if ($this->selectedVariant) {
-            // Add variant to cart with attributes
+            // Add variant to cart with simplified options
             $result = CartManagement::addItemToCartWithVariant(
                 $this->product->id,
                 $this->selectedVariant->id,
                 $this->quantity,
-                $this->selectedAttributes
+                $this->selectedOptions // Use simplified options instead of attributes
             );
         } else {
             // Add product to cart
@@ -367,9 +374,13 @@ class ProductDetailPage extends Component
         ]);
     }
 
-    /**
-     * Get product attributes for variant selection (Livewire computed property)
-     */
+    // ========================================
+    // LEGACY COMPLEX ATTRIBUTE SYSTEM (DEPRECATED)
+    // ========================================
+    // This method is no longer used in the simplified variant system
+    // Keeping for reference during transition period
+
+    /*
     public function getProductAttributesProperty()
     {
         if (!$this->product->has_variants) {
@@ -400,6 +411,7 @@ class ProductDetailPage extends Component
 
         return $attributes;
     }
+    */
 
     public function render()
     {
@@ -413,7 +425,8 @@ class ProductDetailPage extends Component
             'stockQuantity' => $this->getStockQuantity(),
             'averageRating' => $this->averageRating,
             'totalReviews' => $this->totalReviews,
-            'productAttributes' => $this->productAttributes,
+            'availableOptions' => $this->availableOptions, // Simplified options
+            'selectedOptions' => $this->selectedOptions, // Current selections
             'reviews' => $this->reviews,
         ])->layoutData(['title' => $this->title]);
     }
