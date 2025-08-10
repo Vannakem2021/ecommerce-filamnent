@@ -539,9 +539,14 @@ class Product extends Model
 
     /**
      * Create variants from attribute combinations
+     * @deprecated This method is part of the old complex system. Use simplified JSON-based variants instead.
      */
     public function generateVariants($attributeCombinations = null)
     {
+        // DEPRECATED: This is part of the old complex normalized system
+        // For new implementations, create variants manually with JSON options
+        \Log::warning('generateVariants() is deprecated. Use simplified JSON-based variant creation instead.');
+
         if (!$this->has_variants || !$this->variant_attributes) {
             return false;
         }
@@ -560,9 +565,13 @@ class Product extends Model
 
     /**
      * Generate all possible attribute combinations
+     * @deprecated This method is part of the old complex system. Use simplified JSON-based variants instead.
      */
     protected function generateAttributeCombinations()
     {
+        // DEPRECATED: This is part of the old complex normalized system
+        \Log::warning('generateAttributeCombinations() is deprecated. Use simplified JSON-based variant creation instead.');
+
         $attributes = $this->getProductAttributesCollection();
         $combinations = [[]];
 
@@ -581,8 +590,66 @@ class Product extends Model
         return $combinations;
     }
 
+    // ========================================
+    // SIMPLIFIED VARIANT CREATION METHODS
+    // ========================================
+
+    /**
+     * Create a variant with JSON options (simplified approach)
+     *
+     * @param array $options JSON options like ['Color' => 'Black', 'Storage' => '256GB']
+     * @param int|null $overridePrice Price in cents, null to use product base price
+     * @param int $stockQuantity Stock quantity for this variant
+     * @param string|null $imageUrl Optional image URL for this variant
+     * @return ProductVariant
+     */
+    public function createSimpleVariant(array $options, ?int $overridePrice = null, int $stockQuantity = 10, ?string $imageUrl = null)
+    {
+        // Check if variant with these options already exists
+        $existingVariant = $this->findVariantByOptions($options);
+        if ($existingVariant) {
+            return $existingVariant;
+        }
+
+        // Generate SKU from options
+        $sku = $this->generateSkuFromOptions($options);
+
+        // Create new variant with simplified approach
+        $variant = $this->variants()->create([
+            'sku' => $sku,
+            'options' => $options,
+            'override_price' => $overridePrice,
+            'stock_quantity' => $stockQuantity,
+            'image_url' => $imageUrl,
+            'stock_status' => 'in_stock',
+            'low_stock_threshold' => 5,
+            'track_inventory' => true,
+            'is_active' => true,
+            'is_default' => $this->variants()->count() === 0, // First variant is default
+        ]);
+
+        return $variant;
+    }
+
+    /**
+     * Generate SKU from JSON options
+     */
+    protected function generateSkuFromOptions(array $options): string
+    {
+        $baseSku = $this->brand ? strtoupper($this->brand->slug) : 'PROD';
+        $productSku = strtoupper(str_replace(' ', '', $this->name));
+
+        $optionParts = [];
+        foreach ($options as $key => $value) {
+            $optionParts[] = strtoupper(str_replace(' ', '', $value));
+        }
+
+        return $baseSku . '-' . $productSku . '-' . implode('-', $optionParts);
+    }
+
     /**
      * Create a variant from attribute combination
+     * @deprecated This method is part of the old complex system. Use createSimpleVariant() instead.
      */
     protected function createVariantFromCombination($combination)
     {

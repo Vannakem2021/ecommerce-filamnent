@@ -146,6 +146,7 @@ class ProductDetailPage extends Component
 
     /**
      * Get available options with additional metadata for better UX
+     * Handles paired attributes correctly (e.g., Storage + RAM combinations)
      */
     public function getAvailableOptionsWithMetadata()
     {
@@ -163,6 +164,9 @@ class ProductDetailPage extends Component
                                $variant->options[$optionName] === $optionValue;
                     });
 
+                // Check if this option is compatible with current selections
+                $isCompatible = $this->isOptionCompatibleWithSelections($optionName, $optionValue);
+
                 // Calculate price range for this option
                 $prices = $variantsWithOption->map(function ($variant) {
                     return $variant->final_price_in_dollars;
@@ -171,6 +175,7 @@ class ProductDetailPage extends Component
                 $optionsWithMeta[$optionName][$optionValue] = [
                     'value' => $optionValue,
                     'available' => $variantsWithOption->sum('stock_quantity') > 0,
+                    'compatible' => $isCompatible,
                     'min_price' => $prices->min(),
                     'max_price' => $prices->max(),
                     'variant_count' => $variantsWithOption->count()
@@ -179,6 +184,38 @@ class ProductDetailPage extends Component
         }
 
         return $optionsWithMeta;
+    }
+
+    /**
+     * Check if an option value is compatible with current selections
+     * This prevents invalid combinations like RAM 8GB + Storage 256GB
+     */
+    public function isOptionCompatibleWithSelections($optionName, $optionValue)
+    {
+        // If no selections made yet, all options are compatible
+        if (empty($this->selectedOptions)) {
+            return true;
+        }
+
+        // Create a test selection with this new option
+        $testOptions = array_merge($this->selectedOptions, [$optionName => $optionValue]);
+
+        // Check if any variant exists with these exact options
+        $compatibleVariant = $this->product->variants()
+            ->get()
+            ->first(function ($variant) use ($testOptions) {
+                if (!$variant->options) return false;
+
+                // Check if variant contains all test options
+                foreach ($testOptions as $key => $value) {
+                    if (!isset($variant->options[$key]) || $variant->options[$key] !== $value) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+        return $compatibleVariant !== null;
     }
 
     /**

@@ -35,23 +35,70 @@ class VariantsRelationManager extends RelationManager
                             ->helperText('Optional custom name for this variant'),
                     ])->columns(2),
 
-                Forms\Components\Section::make('Variant Attributes')
+                Forms\Components\Section::make('Variant Options (Simplified System)')
+                    ->schema([
+                        Forms\Components\KeyValue::make('options')
+                            ->label('Variant Options')
+                            ->helperText('Define the variant options as key-value pairs (e.g., Color: Black, Storage: 256GB, RAM: 8GB)')
+                            ->keyLabel('Attribute')
+                            ->valueLabel('Value')
+                            ->addActionLabel('Add Option')
+                            ->reorderable(false)
+                            ->columnSpanFull()
+                            ->required(),
+
+                        Forms\Components\TextInput::make('override_price_dollars')
+                            ->label('Override Price (USD)')
+                            ->helperText('Leave empty to use product base price. Set a specific price for this variant combination.')
+                            ->numeric()
+                            ->step(0.01)
+                            ->prefix('$')
+                            ->afterStateUpdated(function ($state, $set) {
+                                // Convert dollars to cents for storage
+                                $set('override_price', $state ? round($state * 100) : null);
+                            })
+                            ->afterStateHydrated(function ($component, $state, $record) {
+                                // Convert cents to dollars for display
+                                if ($record && $record->override_price) {
+                                    $component->state($record->override_price / 100);
+                                }
+                            })
+                            ->dehydrated(false), // Don't save this field directly
+
+                        Forms\Components\Hidden::make('override_price'), // The actual field that gets saved
+
+                        Forms\Components\TextInput::make('image_url')
+                            ->label('Variant Image URL')
+                            ->helperText('Optional: Specific image for this variant')
+                            ->url()
+                            ->placeholder('https://example.com/image.jpg'),
+                    ])
+                    ->columns(2),
+
+                Forms\Components\Section::make('Legacy Attributes (Old System)')
                     ->schema([
                         Forms\Components\Placeholder::make('attribute_info')
                             ->label('')
-                            ->content('Select attribute values for this variant. The SKU will be auto-generated based on these selections.')
+                            ->content('⚠️ This is the old complex system. Use "Variant Options" above for the simplified approach.')
                             ->visible(fn ($livewire) => $livewire->ownerRecord->has_variants && $livewire->ownerRecord->variant_attributes),
                     ])
-                    ->visible(fn ($livewire) => $livewire->ownerRecord->has_variants && $livewire->ownerRecord->variant_attributes),
+                    ->visible(fn ($livewire) => $livewire->ownerRecord->has_variants && $livewire->ownerRecord->variant_attributes)
+                    ->collapsed(),
 
-                Forms\Components\Section::make('Pricing')
+                Forms\Components\Section::make('Pricing (Simplified System)')
                     ->schema([
+                        Forms\Components\Placeholder::make('pricing_info')
+                            ->label('Pricing Logic')
+                            ->content('✅ This variant uses simplified pricing: final_price = override_price ?? product.base_price')
+                            ->columnSpanFull(),
+
                         Forms\Components\TextInput::make('price')
-                            ->label('Selling Price')
+                            ->label('Legacy Price (Deprecated)')
+                            ->helperText('⚠️ This field is deprecated. Use Override Price above for variant-specific pricing.')
                             ->numeric()
-                            ->required()
                             ->prefix('INR')
-                            ->step(0.01),
+                            ->step(0.01)
+                            ->disabled(),
 
                         Forms\Components\TextInput::make('compare_price')
                             ->label('Compare Price')
@@ -133,6 +180,28 @@ class VariantsRelationManager extends RelationManager
                     ->label('Variant Name')
                     ->searchable()
                     ->limit(50),
+
+                Tables\Columns\TextColumn::make('options')
+                    ->label('Options (JSON)')
+                    ->formatStateUsing(function ($state) {
+                        if (empty($state)) {
+                            return '—';
+                        }
+                        return collect($state)->map(function ($value, $key) {
+                            return "{$key}: {$value}";
+                        })->join(', ');
+                    })
+                    ->limit(40)
+                    ->tooltip(function ($record) {
+                        return $record->options ? json_encode($record->options, JSON_PRETTY_PRINT) : null;
+                    }),
+
+                Tables\Columns\TextColumn::make('override_price')
+                    ->label('Override Price')
+                    ->formatStateUsing(function ($state) {
+                        return $state ? '$' . number_format($state / 100, 2) : '—';
+                    })
+                    ->tooltip('Custom price for this variant. Empty = uses base price'),
 
                 Tables\Columns\TextColumn::make('price')
                     ->label('Price')
@@ -279,7 +348,7 @@ class VariantsRelationManager extends RelationManager
                         ->modalDescription('This will regenerate SKUs for all selected variants based on their current attributes.'),
 
                     Tables\Actions\BulkAction::make('convert_to_json_options')
-                        ->label('Convert to JSON Options')
+                        ->label('🔄 Convert to JSON Options')
                         ->icon('heroicon-o-arrow-path-rounded-square')
                         ->color('success')
                         ->action(function ($records) {
@@ -301,6 +370,70 @@ class VariantsRelationManager extends RelationManager
                         })
                         ->requiresConfirmation()
                         ->modalDescription('This will convert attribute values to JSON options for the simplified variant system.'),
+
+                    Tables\Actions\BulkAction::make('set_paired_pricing')
+                        ->label('💰 Set Paired Pricing')
+                        ->icon('heroicon-o-currency-dollar')
+                        ->color('warning')
+                        ->form([
+                            Forms\Components\Placeholder::make('info')
+                                ->content('Set override prices for common Storage + RAM combinations:'),
+                            Forms\Components\TextInput::make('entry_price')
+                                ->label('Entry Tier (8GB + 64GB)')
+                                ->numeric()
+                                ->prefix('$')
+                                ->placeholder('Leave empty for base price'),
+                            Forms\Components\TextInput::make('mid_price')
+                                ->label('Mid Tier (12GB + 256GB)')
+                                ->numeric()
+                                ->prefix('$')
+                                ->default(1300),
+                            Forms\Components\TextInput::make('high_price')
+                                ->label('High Tier (16GB + 512GB)')
+                                ->numeric()
+                                ->prefix('$')
+                                ->default(1500),
+                            Forms\Components\TextInput::make('premium_price')
+                                ->label('Premium Tier (16GB + 1TB)')
+                                ->numeric()
+                                ->prefix('$')
+                                ->default(1700),
+                        ])
+                        ->action(function ($records, $data) {
+                            $updated = 0;
+                            foreach ($records as $record) {
+                                $options = $record->options ?? [];
+                                $ram = $options['RAM'] ?? '';
+                                $storage = $options['Storage'] ?? '';
+
+                                $overridePrice = null;
+
+                                // Match tier combinations
+                                if ($ram === '8GB' && $storage === '64GB' && $data['entry_price']) {
+                                    $overridePrice = $data['entry_price'] * 100;
+                                } elseif ($ram === '12GB' && $storage === '256GB' && $data['mid_price']) {
+                                    $overridePrice = $data['mid_price'] * 100;
+                                } elseif ($ram === '16GB' && $storage === '512GB' && $data['high_price']) {
+                                    $overridePrice = $data['high_price'] * 100;
+                                } elseif ($ram === '16GB' && $storage === '1TB' && $data['premium_price']) {
+                                    $overridePrice = $data['premium_price'] * 100;
+                                }
+
+                                if ($overridePrice !== null) {
+                                    $record->override_price = $overridePrice;
+                                    $record->save();
+                                    $updated++;
+                                }
+                            }
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Pricing Updated')
+                                ->body("Updated pricing for {$updated} variants with paired combinations.")
+                                ->success()
+                                ->send();
+                        })
+                        ->requiresConfirmation()
+                        ->modalDescription('This will set override prices for valid Storage + RAM combinations.'),
 
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),

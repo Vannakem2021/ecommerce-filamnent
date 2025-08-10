@@ -246,7 +246,7 @@ class CartManagement {
         return $base_key;
     }
 
-    // Get item data (product or variant)
+    // Get item data (product or variant) - SIMPLIFIED PRICING
     static protected function getItemData($item_id, $type, $product_id = null)
     {
         if ($type === 'variant') {
@@ -256,8 +256,8 @@ class CartManagement {
                     'product_id' => $variant->product_id,
                     'variant_id' => $variant->id,
                     'name' => $variant->name ?: $variant->product->name,
-                    'image' => $variant->images[0] ?? $variant->product->images[0] ?? null,
-                    'price' => $variant->price_cents ? $variant->price_cents / 100 : $variant->product->price,
+                    'image' => $variant->image_url ?: ($variant->images[0] ?? $variant->product->images[0] ?? null),
+                    'price' => $variant->final_price_in_dollars, // Use simplified final_price accessor
                 ];
             }
         } else {

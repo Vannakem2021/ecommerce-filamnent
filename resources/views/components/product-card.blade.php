@@ -167,8 +167,8 @@
 
                         if ($product->has_variants && $product->variants && $product->variants->isNotEmpty()) {
                             try {
-                                // Get min and max prices from active variants
-                                $activePrices = $product->variants->where('is_active', true)->pluck('price_cents')->filter();
+                                // Use simplified final_price accessor instead of complex price_cents queries
+                                $activePrices = $product->variants->where('is_active', true)->pluck('final_price')->filter();
                                 if ($activePrices->isNotEmpty()) {
                                     $minPrice = $activePrices->min() / 100;
                                     $maxPrice = $activePrices->max() / 100;

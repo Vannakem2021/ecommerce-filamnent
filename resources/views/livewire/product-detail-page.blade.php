@@ -264,16 +264,21 @@
                                                        $variant->stock_quantity > 0;
                                             })
                                             ->isNotEmpty();
+
+                                        // Check if this option is compatible with current selections (for paired attributes)
+                                        $isCompatible = $this->isOptionCompatibleWithSelections($optionName, $optionValue);
+
+                                        $isDisabled = !$hasStock || !$isCompatible;
                                     @endphp
 
                                     <button wire:click="selectOption('{{ $optionName }}', '{{ $optionValue }}')"
-                                            @if(!$hasStock) disabled @endif
+                                            @if($isDisabled) disabled @endif
                                             class="relative px-4 py-3 border-2 rounded-lg font-medium transition-all duration-200
                                                    {{ $isSelected
                                                       ? 'border-teal-600 bg-teal-50 text-teal-700 shadow-md ring-2 ring-teal-200'
-                                                      : ($hasStock
-                                                         ? 'border-gray-300 bg-white text-gray-700 hover:border-teal-400 hover:bg-teal-50 hover:scale-105'
-                                                         : 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed') }}">
+                                                      : ($isDisabled
+                                                         ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed opacity-60'
+                                                         : 'border-gray-300 bg-white text-gray-700 hover:border-teal-400 hover:bg-teal-50 hover:scale-105') }}">
 
                                         <span>{{ $optionValue }}</span>
 
@@ -288,6 +293,10 @@
                                         @if(!$hasStock)
                                             <div class="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-90 rounded-lg">
                                                 <span class="text-xs text-red-500 font-medium">Out of Stock</span>
+                                            </div>
+                                        @elseif(!$isCompatible)
+                                            <div class="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-90 rounded-lg">
+                                                <span class="text-xs text-orange-500 font-medium">Not Compatible</span>
                                             </div>
                                         @endif
                                     </button>

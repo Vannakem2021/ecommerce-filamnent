@@ -110,28 +110,18 @@ class ProductResource extends Resource
                             ->reorderable()
                     ]),
 
-                    Section::make('Variants Configuration')->schema([
+                    Section::make('Variants Configuration (Simplified System)')->schema([
                         Toggle::make('has_variants')
                             ->label('Has Variants')
-                            ->helperText('Enable if this product has multiple variants (color, size, etc.)')
+                            ->helperText('Enable if this product has multiple variants (color, size, etc.). Use the Variants tab below to manage individual variants with JSON options.')
                             ->live(),
 
-                        Select::make('variant_type')
-                            ->label('Variant Type')
-                            ->options([
-                                'none' => 'No Variants',
-                                'single' => 'Single Variant',
-                                'multiple' => 'Multiple Variants',
-                            ])
-                            ->default('none')
-                            ->visible(fn ($get) => $get('has_variants')),
-
-                        Select::make('variant_attributes')
-                            ->label('Variant Attributes')
-                            ->multiple()
-                            ->options(fn () => \App\Models\ProductAttribute::active()->pluck('name', 'id'))
-                            ->helperText('Select which attributes this product uses for variants')
-                            ->visible(fn ($get) => $get('has_variants')),
+                        Forms\Components\Textarea::make('attributes')
+                            ->label('Product Attributes (JSON)')
+                            ->helperText('Optional: Add product-level attributes as JSON (e.g., {"Brand": "Apple", "Screen Size": "6.1 inch"})')
+                            ->rows(3)
+                            ->visible(fn ($get) => $get('has_variants'))
+                            ->placeholder('{"Brand": "Apple", "Screen Size": "6.1 inch", "Operating System": "iOS"}'),
                     ]),
 
                     Section::make('SEO Data')->schema([
