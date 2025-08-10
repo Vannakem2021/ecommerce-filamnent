@@ -140,26 +140,38 @@
                             <span class="text-gray-600">{{ $averageRating }} out of 5 ({{ $totalReviews }} reviews)</span>
                         </div>
 
-                        <div class="flex items-baseline gap-4 mb-6">
-                            @if($selectedVariant)
-                                <!-- Specific variant selected - show exact price -->
-                                <span class="text-4xl font-bold text-teal-700">{{ Number::currency($this->currentPrice, 'INR') }}</span>
+                        <div class="flex items-baseline gap-4 mb-6" id="price-display">
+                            @if($selectedVariant || ($dynamicPrice && !empty($selectedOptions)))
+                                <!-- Specific variant selected or dynamic price calculated - show exact price -->
+                                <span class="text-4xl font-bold text-teal-700" id="current-price">{{ Number::currency($this->currentPrice, 'INR') }}</span>
                                 @if($this->currentComparePrice && $this->currentComparePrice > $this->currentPrice)
-                                <span class="text-xl text-gray-500 line-through">{{ Number::currency($this->currentComparePrice, 'INR') }}</span>
-                                <span class="text-lg font-semibold text-red-500">{{ $this->discountPercentage }}% OFF</span>
+                                <span class="text-xl text-gray-500 line-through" id="compare-price">{{ Number::currency($this->currentComparePrice, 'INR') }}</span>
+                                <span class="text-lg font-semibold text-red-500" id="discount-percentage">{{ $this->discountPercentage }}% OFF</span>
+                                @endif
+
+                                @if($dynamicPrice && !empty($selectedOptions) && isset($dynamicPrice['total_modifier']) && $dynamicPrice['total_modifier'] != 0)
+                                <!-- Show price breakdown for dynamic pricing -->
+                                <div class="text-sm text-gray-600 mt-2">
+                                    <div>Base: {{ Number::currency($dynamicPrice['base_price'] ?? $product->price, 'INR') }}</div>
+                                    @if($dynamicPrice['total_modifier'] > 0)
+                                        <div class="text-green-600">+ {{ Number::currency($dynamicPrice['total_modifier'], 'INR') }} (options)</div>
+                                    @elseif($dynamicPrice['total_modifier'] < 0)
+                                        <div class="text-red-600">{{ Number::currency($dynamicPrice['total_modifier'], 'INR') }} (discount)</div>
+                                    @endif
+                                </div>
                                 @endif
                             @elseif($product->has_variants && $this->currentPriceRange)
                                 <!-- No variant selected - show price range -->
-                                <span class="text-4xl font-bold text-teal-700">
+                                <span class="text-4xl font-bold text-teal-700" id="price-range">
                                     {{ Number::currency($this->currentPriceRange['min'], 'INR') }} - {{ Number::currency($this->currentPriceRange['max'], 'INR') }}
                                 </span>
                                 <span class="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">Price varies by options</span>
                             @else
                                 <!-- Single price product or all variants same price -->
-                                <span class="text-4xl font-bold text-teal-700">{{ Number::currency($this->currentPrice, 'INR') }}</span>
+                                <span class="text-4xl font-bold text-teal-700" id="current-price">{{ Number::currency($this->currentPrice, 'INR') }}</span>
                                 @if($this->currentComparePrice && $this->currentComparePrice > $this->currentPrice)
-                                <span class="text-xl text-gray-500 line-through">{{ Number::currency($this->currentComparePrice, 'INR') }}</span>
-                                <span class="text-lg font-semibold text-red-500">{{ $this->discountPercentage }}% OFF</span>
+                                <span class="text-xl text-gray-500 line-through" id="compare-price">{{ Number::currency($this->currentComparePrice, 'INR') }}</span>
+                                <span class="text-lg font-semibold text-red-500" id="discount-percentage">{{ $this->discountPercentage }}% OFF</span>
                                 @endif
                             @endif
                         </div>
@@ -169,9 +181,19 @@
                         {{ $product->short_description ?: 'Experience premium quality with this exceptional product. Designed for those who demand the best, featuring superior craftsmanship and attention to detail.' }}
                     </p>
 
-                    <!-- Product Options (Simplified) -->
+                    <!-- Product Options (Simplified & Enhanced) -->
                     @if($product->has_variants && !empty($availableOptions))
                     <div class="space-y-8">
+                        <!-- Clear Options Button -->
+                        @if(!empty($selectedOptions))
+                        <div class="flex justify-end">
+                            <button wire:click="clearOptions"
+                                    class="text-sm text-gray-500 hover:text-teal-600 underline transition-colors">
+                                Clear All Selections
+                            </button>
+                        </div>
+                        @endif
+
                         @foreach($availableOptions as $optionName => $optionValues)
                         <div class="variant-option-group">
                             <div class="flex items-center justify-between mb-4">
@@ -180,8 +202,12 @@
                                     <span class="text-red-500 text-sm">*</span>
                                 </h3>
                                 @if(isset($selectedOptions[$optionName]))
-                                    <span class="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                                        Selected: {{ $selectedOptions[$optionName] }}
+                                    <span class="text-sm text-teal-600 bg-teal-50 px-3 py-1 rounded-full font-medium">
+                                        ✓ {{ $selectedOptions[$optionName] }}
+                                    </span>
+                                @else
+                                    <span class="text-sm text-gray-400 bg-gray-50 px-3 py-1 rounded-full">
+                                        Please select
                                     </span>
                                 @endif
                             </div>
@@ -223,24 +249,46 @@
                                 @endforeach
                             </div>
                             @else
-                            <!-- Standard Button Selection for Other Options -->
-                            <div class="flex gap-3 flex-wrap">
+                            <!-- Standard Button Selection for Other Options - SIMPLIFIED -->
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                                 @foreach($optionValues as $optionValue)
                                     @php
                                         $isSelected = isset($selectedOptions[$optionName]) && $selectedOptions[$optionName] === $optionValue;
+
+                                        // Check if this option is available (has stock)
+                                        $hasStock = $product->variants()
+                                            ->get()
+                                            ->filter(function($variant) use ($optionName, $optionValue) {
+                                                return isset($variant->options[$optionName]) &&
+                                                       $variant->options[$optionName] === $optionValue &&
+                                                       $variant->stock_quantity > 0;
+                                            })
+                                            ->isNotEmpty();
                                     @endphp
+
                                     <button wire:click="selectOption('{{ $optionName }}', '{{ $optionValue }}')"
-                                            class="px-4 py-3 border-2 rounded-lg font-medium transition-all duration-200 relative
+                                            @if(!$hasStock) disabled @endif
+                                            class="relative px-4 py-3 border-2 rounded-lg font-medium transition-all duration-200
                                                    {{ $isSelected
-                                                      ? 'border-teal-600 bg-teal-50 text-teal-700 shadow-md'
-                                                      : 'border-gray-300 hover:border-teal-400 hover:bg-gray-50' }}">
-                                        {{ $optionValue }}
+                                                      ? 'border-teal-600 bg-teal-50 text-teal-700 shadow-md ring-2 ring-teal-200'
+                                                      : ($hasStock
+                                                         ? 'border-gray-300 bg-white text-gray-700 hover:border-teal-400 hover:bg-teal-50 hover:scale-105'
+                                                         : 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed') }}">
+
+                                        <span>{{ $optionValue }}</span>
+
                                         @if($isSelected)
-                                            <span class="absolute -top-1 -right-1 w-3 h-3 bg-teal-500 rounded-full flex items-center justify-center">
+                                            <span class="absolute -top-1 -right-1 w-4 h-4 bg-teal-600 rounded-full flex items-center justify-center">
                                                 <svg class="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
                                                     <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
                                                 </svg>
                                             </span>
+                                        @endif
+
+                                        @if(!$hasStock)
+                                            <div class="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-90 rounded-lg">
+                                                <span class="text-xs text-red-500 font-medium">Out of Stock</span>
+                                            </div>
                                         @endif
                                     </button>
                                 @endforeach
@@ -249,31 +297,64 @@
                         </div>
                         @endforeach
 
-                        <!-- Variant Selection Status -->
+                        <!-- Enhanced Variant Selection Status -->
                         @if($selectedVariant)
-                            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                                <div class="flex items-center gap-2">
-                                    <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                                    </svg>
-                                    <span class="text-green-800 font-medium">Variant Selected</span>
+                            <div class="bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 rounded-xl p-4 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h4 class="text-green-800 font-semibold">Perfect! Variant Selected</h4>
+                                        <div class="flex items-center gap-4 text-sm text-green-700 mt-1 flex-wrap">
+                                            <span class="flex items-center gap-1">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                                </svg>
+                                                SKU: {{ $selectedVariant->sku }}
+                                            </span>
+                                            <span class="flex items-center gap-1">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                                                </svg>
+                                                Stock: {{ $selectedVariant->stock_quantity }} available
+                                            </span>
+                                            @if($selectedVariant->hasPriceOverride())
+                                            <span class="flex items-center gap-1 text-teal-600">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                                                </svg>
+                                                Special pricing
+                                            </span>
+                                            @endif
+                                        </div>
+                                    </div>
                                 </div>
-                                <p class="text-green-700 text-sm mt-1">
-                                    SKU: {{ $selectedVariant->sku }} |
-                                    Stock: {{ $selectedVariant->stock_quantity }} available
-                                </p>
                             </div>
                         @elseif($product->has_variants)
-                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                                <div class="flex items-center gap-2">
-                                    <svg class="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                                    </svg>
-                                    <span class="text-yellow-800 font-medium">Please Select Options</span>
+                            @php
+                                $missingOptions = array_diff(array_keys($availableOptions), array_keys($selectedOptions));
+                            @endphp
+                            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h4 class="text-blue-800 font-semibold">Select Your Options</h4>
+                                        <p class="text-blue-700 text-sm mt-1">
+                                            @if(count($missingOptions) > 0)
+                                                Please select: <span class="font-medium">{{ implode(', ', $missingOptions) }}</span>
+                                            @else
+                                                Choose from the available options above to see pricing and stock information.
+                                            @endif
+                                        </p>
+                                    </div>
                                 </div>
-                                <p class="text-yellow-700 text-sm mt-1">
-                                    Choose your preferred options to see pricing and availability.
-                                </p>
                             </div>
                         @endif
                     </div>
@@ -307,15 +388,12 @@
 
                     <!-- Action Buttons -->
                     <div class="flex gap-4 pt-4">
-                        @php
-                            $canAddToCart = $inStock && (!$product->has_variants || $selectedVariant);
-                        @endphp
                         <button wire:click="addToCart"
                                 wire:loading.attr="disabled"
                                 wire:target="addToCart"
-                                @if(!$canAddToCart) disabled @endif
+                                @if(!$this->canAddToCart) disabled @endif
                                 class="flex-1 font-semibold py-3 px-6 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2
-                                       {{ $canAddToCart
+                                       {{ $this->canAddToCart
                                           ? 'bg-teal-600 hover:bg-teal-700 text-white'
                                           : 'bg-gray-400 text-gray-600 cursor-not-allowed' }}">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -339,6 +417,8 @@
                             {{ $isWishlisted ? 'Wishlisted' : 'Wishlist' }}
                         </button>
                     </div>
+
+
 
                     <!-- Product Features -->
                     <div class="grid grid-cols-3 gap-4 pt-6 border-t border-gray-200">
@@ -502,6 +582,11 @@
             // Update specifications dynamically
             updateSpecifications(data.variantId);
         });
+
+        // Listen for price updates (dynamic pricing)
+        Livewire.on('priceUpdated', (data) => {
+            updatePriceDisplay(data[0]);
+        });
     });
 
     function updateSpecifications(variantId) {
@@ -578,5 +663,120 @@
 
         return div;
     }
+
+    // Dynamic price update function
+    function updatePriceDisplay(data) {
+        const priceDisplay = document.getElementById('price-display');
+        if (!priceDisplay) return;
+
+        const currentPriceEl = document.getElementById('current-price');
+        const comparePriceEl = document.getElementById('compare-price');
+        const discountEl = document.getElementById('discount-percentage');
+        const priceRangeEl = document.getElementById('price-range');
+
+        // Hide price range when specific price is available
+        if (priceRangeEl) {
+            priceRangeEl.style.display = 'none';
+        }
+
+        if (data.dynamicPrice && data.selectedOptions && Object.keys(data.selectedOptions).length > 0) {
+            // Update with dynamic price
+            const price = data.dynamicPrice.price;
+            const comparePrice = data.dynamicComparePrice ? (data.dynamicComparePrice.compare_price || data.dynamicComparePrice.price) : null;
+
+            if (currentPriceEl) {
+                currentPriceEl.textContent = formatCurrency(price);
+                currentPriceEl.style.display = 'inline';
+            }
+
+            if (comparePriceEl && comparePrice && comparePrice > price) {
+                comparePriceEl.textContent = formatCurrency(comparePrice);
+                comparePriceEl.style.display = 'inline';
+
+                if (discountEl) {
+                    const discount = Math.round(((comparePrice - price) / comparePrice) * 100);
+                    discountEl.textContent = discount + '% OFF';
+                    discountEl.style.display = 'inline';
+                }
+            } else {
+                if (comparePriceEl) comparePriceEl.style.display = 'none';
+                if (discountEl) discountEl.style.display = 'none';
+            }
+
+            // Add price breakdown if there are modifiers
+            updatePriceBreakdown(data.dynamicPrice);
+
+        } else if (data.selectedVariant) {
+            // Update with variant price
+            const price = data.selectedVariant.price_cents / 100;
+            const comparePrice = data.selectedVariant.compare_price_cents ? data.selectedVariant.compare_price_cents / 100 : null;
+
+            if (currentPriceEl) {
+                currentPriceEl.textContent = formatCurrency(price);
+                currentPriceEl.style.display = 'inline';
+            }
+
+            if (comparePriceEl && comparePrice && comparePrice > price) {
+                comparePriceEl.textContent = formatCurrency(comparePrice);
+                comparePriceEl.style.display = 'inline';
+
+                if (discountEl) {
+                    const discount = Math.round(((comparePrice - price) / comparePrice) * 100);
+                    discountEl.textContent = discount + '% OFF';
+                    discountEl.style.display = 'inline';
+                }
+            } else {
+                if (comparePriceEl) comparePriceEl.style.display = 'none';
+                if (discountEl) discountEl.style.display = 'none';
+            }
+
+            // Remove price breakdown for variant pricing
+            removePriceBreakdown();
+        }
+    }
+
+    function updatePriceBreakdown(dynamicPrice) {
+        // Remove existing breakdown
+        removePriceBreakdown();
+
+        if (!dynamicPrice.total_modifier || dynamicPrice.total_modifier === 0) {
+            return;
+        }
+
+        const priceDisplay = document.getElementById('price-display');
+        if (!priceDisplay) return;
+
+        const breakdown = document.createElement('div');
+        breakdown.id = 'price-breakdown';
+        breakdown.className = 'text-sm text-gray-600 mt-2';
+
+        let breakdownHTML = `<div>Base: ${formatCurrency(dynamicPrice.base_price || 0)}</div>`;
+
+        if (dynamicPrice.total_modifier > 0) {
+            breakdownHTML += `<div class="text-green-600">+ ${formatCurrency(dynamicPrice.total_modifier)} (options)</div>`;
+        } else if (dynamicPrice.total_modifier < 0) {
+            breakdownHTML += `<div class="text-red-600">${formatCurrency(dynamicPrice.total_modifier)} (discount)</div>`;
+        }
+
+        breakdown.innerHTML = breakdownHTML;
+        priceDisplay.appendChild(breakdown);
+    }
+
+    function removePriceBreakdown() {
+        const existing = document.getElementById('price-breakdown');
+        if (existing) {
+            existing.remove();
+        }
+    }
+
+    function formatCurrency(amount) {
+        return new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: 'INR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2
+        }).format(amount);
+    }
+
 </script>
 @endpush

@@ -34,6 +34,12 @@ class ProductAttributeValueResource extends Resource
                     ->maxLength(255),
                 Forms\Components\TextInput::make('color_code')
                     ->maxLength(255),
+                Forms\Components\TextInput::make('price_modifier')
+                    ->label('Price Modifier ($)')
+                    ->numeric()
+                    ->step(0.01)
+                    ->default(0)
+                    ->helperText('Price adjustment in dollars. Positive values add to base price, negative values subtract. Example: 30 for +$30, -10 for -$10'),
                 Forms\Components\Textarea::make('description')
                     ->columnSpanFull(),
                 Forms\Components\Toggle::make('is_active')
@@ -58,6 +64,11 @@ class ProductAttributeValueResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('color_code')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('formatted_price_modifier')
+                    ->label('Price Modifier')
+                    ->sortable(query: function ($query, $direction) {
+                        return $query->orderBy('price_modifier_cents', $direction);
+                    }),
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean()

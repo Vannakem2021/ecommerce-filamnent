@@ -90,6 +90,22 @@ class Product extends Model
                 $product->cost_price_cents = round($product->cost_price * 100);
             }
         });
+
+        static::saved(function ($product) {
+            // Auto-generate variants when has_variants is enabled and variant_attributes are set
+            if ($product->has_variants &&
+                !empty($product->variant_attributes) &&
+                $product->variants()->count() === 0) {
+
+                // Generate variants based on attribute combinations
+                $product->generateVariants();
+            }
+
+            // If has_variants was disabled, clean up any existing variants
+            if (!$product->has_variants && $product->wasChanged('has_variants')) {
+                $product->variants()->delete();
+            }
+        });
     }
 
     /**
@@ -377,13 +393,13 @@ class Product extends Model
     // ===== VARIANT-RELATED METHODS =====
 
     /**
-     * Get the effective price (from default variant or product)
+     * Get the effective price (from default variant or product) - SIMPLIFIED
      */
     public function getEffectivePriceAttribute()
     {
         try {
             if ($this->has_variants && $this->defaultVariant) {
-                return $this->defaultVariant->price ?? $this->price ?? 0;
+                return $this->defaultVariant->final_price_in_dollars ?? $this->price ?? 0;
             }
 
             return $this->price ?? 0;
@@ -393,12 +409,12 @@ class Product extends Model
     }
 
     /**
-     * Get the effective price in cents (from default variant or product)
+     * Get the effective price in cents (from default variant or product) - SIMPLIFIED
      */
     public function getEffectivePriceCentsAttribute()
     {
         if ($this->has_variants && $this->defaultVariant) {
-            return $this->defaultVariant->price_cents;
+            return $this->defaultVariant->final_price;
         }
 
         return $this->price_cents;
@@ -450,14 +466,19 @@ class Product extends Model
     }
 
     /**
-     * Get the lowest price among variants or product price
+     * Get the lowest price among variants or product price - SIMPLIFIED
      */
     public function getLowestPriceAttribute()
     {
         try {
             if ($this->has_variants && $this->activeVariants) {
-                $lowestPriceCents = $this->activeVariants()->min('price_cents');
-                return $lowestPriceCents ? $lowestPriceCents / 100 : ($this->price ?? 0);
+                // Use simplified pricing logic: check both override_price and base price
+                $variants = $this->activeVariants()->get();
+                $lowestPrice = $variants->map(function ($variant) {
+                    return $variant->final_price; // Uses override_price ?? product.price_cents
+                })->min();
+
+                return $lowestPrice ? $lowestPrice / 100 : ($this->price ?? 0);
             }
 
             return $this->price ?? 0;
@@ -576,12 +597,29 @@ class Product extends Model
             return $existingVariant;
         }
 
+        // Calculate variant price based on base price + attribute value modifiers
+        $variantPriceCents = $this->price_cents;
+        $variantComparePriceCents = $this->compare_price_cents;
+        $variantCostPriceCents = $this->cost_price_cents;
+
+        foreach ($combination as $attributeId => $valueId) {
+            $attributeValue = ProductAttributeValue::find($valueId);
+            if ($attributeValue && $attributeValue->price_modifier_cents) {
+                $variantPriceCents += $attributeValue->price_modifier_cents;
+
+                // Also adjust compare price if it exists
+                if ($variantComparePriceCents) {
+                    $variantComparePriceCents += $attributeValue->price_modifier_cents;
+                }
+            }
+        }
+
         // Create new variant
         $variant = $this->variants()->create([
-            'price_cents' => $this->price_cents,
-            'compare_price_cents' => $this->compare_price_cents,
-            'cost_price_cents' => $this->cost_price_cents,
-            'stock_quantity' => $this->stock_quantity,
+            'price_cents' => $variantPriceCents,
+            'compare_price_cents' => $variantComparePriceCents,
+            'cost_price_cents' => $variantCostPriceCents,
+            'stock_quantity' => $this->stock_quantity > 0 ? $this->stock_quantity : 10, // Default to 10 if product stock is 0
             'stock_status' => $this->stock_status ?: 'in_stock', // Default to in_stock if not set
             'low_stock_threshold' => $this->low_stock_threshold ?: 5,
             'track_inventory' => $this->track_inventory ?? true,
@@ -615,11 +653,34 @@ class Product extends Model
      */
     public function findVariantByOptions($selectedOptions)
     {
-        return $this->variants()
-            ->get()
-            ->first(function ($variant) use ($selectedOptions) {
-                return ($variant->options ?? []) === $selectedOptions;
-            });
+        $variants = $this->variants()->get();
+
+        // First, try to find an exact match
+        $exactMatch = $variants->first(function ($variant) use ($selectedOptions) {
+            $variantOptions = $variant->options ?? [];
+            return $variantOptions === $selectedOptions;
+        });
+
+        if ($exactMatch) {
+            return $exactMatch;
+        }
+
+        // If no exact match, find the best partial match
+        // (variant that contains all selected options, even if it has more)
+        $partialMatch = $variants->first(function ($variant) use ($selectedOptions) {
+            $variantOptions = $variant->options ?? [];
+
+            // Check if all selected options match the variant options
+            foreach ($selectedOptions as $key => $value) {
+                if (!isset($variantOptions[$key]) || $variantOptions[$key] !== $value) {
+                    return false;
+                }
+            }
+
+            return true; // All selected options match
+        });
+
+        return $partialMatch;
     }
 
     /**
@@ -680,7 +741,14 @@ class Product extends Model
             return $this->stock_quantity;
         }
 
-        return $this->variants()->sum('stock_quantity'); // Use method call
+        $variantStock = $this->variants()->sum('stock_quantity');
+
+        // Fallback to product stock if no variants exist (edge case)
+        if ($variantStock === 0 && $this->variants()->count() === 0) {
+            return $this->stock_quantity;
+        }
+
+        return $variantStock;
     }
 
     /**
@@ -692,11 +760,18 @@ class Product extends Model
             return $this->stock_quantity > 0;
         }
 
-        return $this->variants()->sum('stock_quantity') > 0; // Use method call
+        $variantStock = $this->variants()->sum('stock_quantity');
+
+        // Fallback to product stock if no variants exist (edge case)
+        if ($variantStock === 0 && $this->variants()->count() === 0) {
+            return $this->stock_quantity > 0;
+        }
+
+        return $variantStock > 0;
     }
 
     /**
-     * Get the cheapest variant
+     * Get the cheapest variant - SIMPLIFIED PRICING
      */
     public function getCheapestVariant()
     {
@@ -704,12 +779,213 @@ class Product extends Model
             return null;
         }
 
-        $variants = $this->variants()->get(); // Use method call
+        $variants = $this->activeVariants()->get();
         if ($variants->isEmpty()) {
             return null;
         }
 
-        return $variants->sortBy('price_cents')->first();
+        // Sort by final price (which uses override_price ?? product.price_cents)
+        return $variants->sortBy('final_price')->first();
+    }
+
+    // ========================================
+    // SIMPLIFIED PRICING METHODS
+    // ========================================
+
+    /**
+     * Get price for selected variant using simplified pricing logic
+     * This replaces the complex calculateDynamicPrice method
+     */
+    public function getPriceForVariant($variantId = null, $selectedOptions = [])
+    {
+        // If variant ID is provided, use that variant's final price
+        if ($variantId) {
+            $variant = $this->variants()->find($variantId);
+            if ($variant) {
+                $basePrice = $this->price_cents;
+                $finalPrice = $variant->final_price;
+                $modifier = $finalPrice - $basePrice;
+
+                return [
+                    'price_cents' => $finalPrice,
+                    'price' => $variant->final_price_in_dollars,
+                    'base_price_cents' => $basePrice,
+                    'base_price' => $basePrice / 100,
+                    'total_modifier_cents' => $modifier,
+                    'total_modifier' => $modifier / 100,
+                    'variant' => $variant,
+                    'has_override' => $variant->hasPriceOverride(),
+                    'modifiers' => [] // Empty for simplified system
+                ];
+            }
+        }
+
+        // If options are provided, find matching variant
+        if (!empty($selectedOptions)) {
+            $variant = $this->findVariantByOptions($selectedOptions);
+            if ($variant) {
+                $basePrice = $this->price_cents;
+                $finalPrice = $variant->final_price;
+                $modifier = $finalPrice - $basePrice;
+
+                return [
+                    'price_cents' => $finalPrice,
+                    'price' => $variant->final_price_in_dollars,
+                    'base_price_cents' => $basePrice,
+                    'base_price' => $basePrice / 100,
+                    'total_modifier_cents' => $modifier,
+                    'total_modifier' => $modifier / 100,
+                    'variant' => $variant,
+                    'has_override' => $variant->hasPriceOverride(),
+                    'modifiers' => [] // Empty for simplified system
+                ];
+            }
+        }
+
+        // Fallback to product base price
+        return [
+            'price_cents' => $this->price_cents,
+            'price' => $this->price,
+            'base_price_cents' => $this->price_cents,
+            'base_price' => $this->price,
+            'total_modifier_cents' => 0,
+            'total_modifier' => 0,
+            'variant' => null,
+            'has_override' => false,
+            'modifiers' => []
+        ];
+    }
+
+
+
+    // ========================================
+    // LEGACY DYNAMIC PRICING METHODS (DEPRECATED)
+    // ========================================
+
+    /**
+     * Calculate dynamic price based on selected options using Option B approach
+     * (base price + sum of attribute modifiers)
+     */
+    public function calculateDynamicPrice($selectedOptions = [])
+    {
+        $basePriceCents = $this->price_cents;
+        $totalModifierCents = 0;
+
+        if (empty($selectedOptions)) {
+            return [
+                'price_cents' => $basePriceCents,
+                'price' => $basePriceCents / 100,
+                'modifiers' => []
+            ];
+        }
+
+        $modifiers = [];
+
+        // Get all attribute values that match the selected options
+        foreach ($selectedOptions as $attributeName => $selectedValue) {
+            $attribute = ProductAttribute::where('name', $attributeName)->first();
+            if (!$attribute) {
+                continue;
+            }
+
+            $attributeValue = $attribute->values()
+                ->where('value', $selectedValue)
+                ->first();
+
+            if ($attributeValue && $attributeValue->price_modifier_cents) {
+                $totalModifierCents += $attributeValue->price_modifier_cents;
+                $modifiers[] = [
+                    'attribute' => $attributeName,
+                    'value' => $selectedValue,
+                    'modifier_cents' => $attributeValue->price_modifier_cents,
+                    'modifier' => $attributeValue->price_modifier_cents / 100
+                ];
+            }
+        }
+
+        $finalPriceCents = $basePriceCents + $totalModifierCents;
+
+        return [
+            'price_cents' => $finalPriceCents,
+            'price' => $finalPriceCents / 100,
+            'base_price_cents' => $basePriceCents,
+            'base_price' => $basePriceCents / 100,
+            'total_modifier_cents' => $totalModifierCents,
+            'total_modifier' => $totalModifierCents / 100,
+            'modifiers' => $modifiers
+        ];
+    }
+
+    /**
+     * Calculate dynamic compare price based on selected options
+     */
+    public function calculateDynamicComparePrice($selectedOptions = [])
+    {
+        if (!$this->compare_price_cents) {
+            return null;
+        }
+
+        $baseComparePriceCents = $this->compare_price_cents;
+        $totalModifierCents = 0;
+
+        // Apply the same modifiers to compare price
+        foreach ($selectedOptions as $attributeName => $selectedValue) {
+            $attribute = ProductAttribute::where('name', $attributeName)->first();
+            if (!$attribute) {
+                continue;
+            }
+
+            $attributeValue = $attribute->values()
+                ->where('value', $selectedValue)
+                ->first();
+
+            if ($attributeValue && $attributeValue->price_modifier_cents) {
+                $totalModifierCents += $attributeValue->price_modifier_cents;
+            }
+        }
+
+        $finalComparePriceCents = $baseComparePriceCents + $totalModifierCents;
+
+        return [
+            'compare_price_cents' => $finalComparePriceCents,
+            'compare_price' => $finalComparePriceCents / 100
+        ];
+    }
+
+
+
+    /**
+     * Get available price modifiers for frontend
+     */
+    public function getPriceModifiers()
+    {
+        $modifiers = [];
+
+        // Get all attributes used by this product's variants
+        $attributeNames = collect($this->getAvailableOptions())->keys();
+
+        foreach ($attributeNames as $attributeName) {
+            $attribute = ProductAttribute::where('name', $attributeName)->first();
+            if (!$attribute) {
+                continue;
+            }
+
+            $attributeModifiers = [];
+            foreach ($attribute->values as $value) {
+                if ($value->price_modifier_cents !== 0) {
+                    $attributeModifiers[$value->value] = [
+                        'modifier_cents' => $value->price_modifier_cents,
+                        'modifier' => $value->price_modifier_cents / 100
+                    ];
+                }
+            }
+
+            if (!empty($attributeModifiers)) {
+                $modifiers[$attributeName] = $attributeModifiers;
+            }
+        }
+
+        return $modifiers;
     }
 
     /**

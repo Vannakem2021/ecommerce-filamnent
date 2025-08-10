@@ -6,6 +6,9 @@ import Alpine from "alpinejs";
 window.Alpine = Alpine;
 Alpine.start();
 
+// Import simplified variant selector
+import "./components/simplified-variant-selector.js";
+
 // Import Swiper and modules
 import { Swiper } from "swiper";
 import { Navigation, Pagination, Autoplay } from "swiper/modules";

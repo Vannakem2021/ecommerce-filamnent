@@ -14,6 +14,7 @@ class ProductVariant extends Model
         'product_id',
         'sku',
         'price_cents',
+        'override_price', // New column for simplified pricing
         'stock_quantity',
         'options', // New JSON column for variant choices
         'image_url', // New column for variant-specific image
@@ -158,6 +159,49 @@ class ProductVariant extends Model
         $this->attributes['cost_price_cents'] = $value ? round($value * 100) : null;
     }
 
+    // ===== SIMPLIFIED PRICING METHODS =====
+
+    /**
+     * Get the final price using simplified pricing logic
+     * Returns override_price if set, otherwise falls back to product base price
+     */
+    public function getFinalPriceAttribute()
+    {
+        return $this->override_price ?? $this->product->price_cents;
+    }
+
+    /**
+     * Get the final price in dollars
+     */
+    public function getFinalPriceInDollarsAttribute()
+    {
+        return $this->final_price / 100;
+    }
+
+    /**
+     * Get the override price in dollars from cents
+     */
+    public function getOverridePriceInDollarsAttribute()
+    {
+        return $this->override_price ? $this->override_price / 100 : null;
+    }
+
+    /**
+     * Set the override price in cents from dollars
+     */
+    public function setOverridePriceInDollarsAttribute($value)
+    {
+        $this->attributes['override_price'] = $value ? round($value * 100) : null;
+    }
+
+    /**
+     * Check if this variant has a price override
+     */
+    public function hasPriceOverride()
+    {
+        return !is_null($this->override_price);
+    }
+
     // ===== BUSINESS LOGIC METHODS =====
 
     /**
@@ -247,49 +291,49 @@ class ProductVariant extends Model
     }
 
     /**
-     * Calculate profit margin percentage
+     * Calculate profit margin percentage - SIMPLIFIED PRICING
      */
     public function getProfitMarginAttribute()
     {
-        if (!$this->cost_price_cents || !$this->price_cents) {
+        if (!$this->cost_price_cents || !$this->final_price) {
             return null;
         }
 
-        $profit = $this->price_cents - $this->cost_price_cents;
-        return round(($profit / $this->price_cents) * 100, 2);
+        $profit = $this->final_price - $this->cost_price_cents;
+        return round(($profit / $this->final_price) * 100, 2);
     }
 
     /**
-     * Calculate profit amount in dollars
+     * Calculate profit amount in dollars - SIMPLIFIED PRICING
      */
     public function getProfitAmountAttribute()
     {
-        if (!$this->cost_price_cents || !$this->price_cents) {
+        if (!$this->cost_price_cents || !$this->final_price) {
             return null;
         }
 
-        return ($this->price_cents - $this->cost_price_cents) / 100;
+        return ($this->final_price - $this->cost_price_cents) / 100;
     }
 
     /**
-     * Calculate discount percentage from compare price
+     * Calculate discount percentage from compare price - SIMPLIFIED PRICING
      */
     public function getDiscountPercentageAttribute()
     {
-        if (!$this->compare_price_cents || !$this->price_cents) {
+        if (!$this->compare_price_cents || !$this->final_price) {
             return null;
         }
 
-        $discount = $this->compare_price_cents - $this->price_cents;
+        $discount = $this->compare_price_cents - $this->final_price;
         return round(($discount / $this->compare_price_cents) * 100, 2);
     }
 
     /**
-     * Check if variant is on sale
+     * Check if variant is on sale - SIMPLIFIED PRICING
      */
     public function getIsOnSaleAttribute()
     {
-        return $this->compare_price_cents && $this->price_cents && $this->compare_price_cents > $this->price_cents;
+        return $this->compare_price_cents && $this->final_price && $this->compare_price_cents > $this->final_price;
     }
 
     /**

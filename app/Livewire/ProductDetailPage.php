@@ -24,6 +24,12 @@ class ProductDetailPage extends Component
     public $averageRating = 4.2;
     public $totalReviews = 128;
 
+    // Dynamic pricing properties
+    public $dynamicPrice = null;
+    public $dynamicComparePrice = null;
+    public $priceModifiers = [];
+    public $showDynamicPricing = false;
+
     public function getReviewsProperty()
     {
         // Mock reviews data - in a real app, this would come from the database
@@ -79,6 +85,8 @@ class ProductDetailPage extends Component
         // Get available options from simplified system
         if ($this->product->has_variants) {
             $this->availableOptions = $this->product->getAvailableOptions();
+            // Simplified: no need for complex price modifiers
+            $this->showDynamicPricing = true; // Always show dynamic pricing for variants
         }
 
         // Set initial image (use product images, not variant images)
@@ -99,6 +107,15 @@ class ProductDetailPage extends Component
     {
         $this->selectedOptions[$optionName] = $optionValue;
         $this->findMatchingVariant();
+        $this->calculateDynamicPrice();
+
+        // Emit event for frontend price updates
+        $this->dispatch('priceUpdated', [
+            'selectedOptions' => $this->selectedOptions,
+            'dynamicPrice' => $this->dynamicPrice,
+            'dynamicComparePrice' => $this->dynamicComparePrice,
+            'selectedVariant' => $this->selectedVariant ? $this->selectedVariant->toArray() : null
+        ]);
     }
 
     /**
@@ -116,6 +133,117 @@ class ProductDetailPage extends Component
 
         if ($this->selectedVariant) {
             $this->updateCurrentImageForVariant();
+
+            // Emit event for frontend updates
+            $this->dispatch('variantChanged', [
+                'variantId' => $this->selectedVariant->id,
+                'sku' => $this->selectedVariant->sku,
+                'stock' => $this->selectedVariant->stock_quantity,
+                'options' => $this->selectedVariant->options
+            ]);
+        }
+    }
+
+    /**
+     * Get available options with additional metadata for better UX
+     */
+    public function getAvailableOptionsWithMetadata()
+    {
+        $optionsWithMeta = [];
+
+        foreach ($this->availableOptions as $optionName => $optionValues) {
+            $optionsWithMeta[$optionName] = [];
+
+            foreach ($optionValues as $optionValue) {
+                // Find variants that have this option value
+                $variantsWithOption = $this->product->variants()
+                    ->get()
+                    ->filter(function ($variant) use ($optionName, $optionValue) {
+                        return isset($variant->options[$optionName]) &&
+                               $variant->options[$optionName] === $optionValue;
+                    });
+
+                // Calculate price range for this option
+                $prices = $variantsWithOption->map(function ($variant) {
+                    return $variant->final_price_in_dollars;
+                });
+
+                $optionsWithMeta[$optionName][$optionValue] = [
+                    'value' => $optionValue,
+                    'available' => $variantsWithOption->sum('stock_quantity') > 0,
+                    'min_price' => $prices->min(),
+                    'max_price' => $prices->max(),
+                    'variant_count' => $variantsWithOption->count()
+                ];
+            }
+        }
+
+        return $optionsWithMeta;
+    }
+
+    /**
+     * Clear all selected options
+     */
+    public function clearOptions()
+    {
+        $this->selectedOptions = [];
+        $this->selectedVariant = null;
+        $this->dynamicPrice = null;
+        $this->dynamicComparePrice = null;
+
+        // Reset to default image
+        $this->currentImage = $this->getCurrentImages()[0] ?? null;
+
+        // Emit event for frontend updates
+        $this->dispatch('optionsCleared');
+        $this->dispatch('priceUpdated', [
+            'selectedOptions' => [],
+            'dynamicPrice' => null,
+            'selectedVariant' => null
+        ]);
+    }
+
+    /**
+     * Get missing required options
+     */
+    public function getMissingOptions()
+    {
+        if (!$this->product->has_variants) {
+            return [];
+        }
+
+        $requiredOptions = array_keys($this->availableOptions);
+        $selectedOptions = array_keys($this->selectedOptions);
+
+        return array_diff($requiredOptions, $selectedOptions);
+    }
+
+
+
+    /**
+     * Calculate dynamic price based on selected options - SIMPLIFIED
+     */
+    public function calculateDynamicPrice()
+    {
+        if (empty($this->selectedOptions)) {
+            $this->dynamicPrice = null;
+            $this->dynamicComparePrice = null;
+            return;
+        }
+
+        // Use simplified pricing logic
+        $priceData = $this->product->getPriceForVariant(null, $this->selectedOptions);
+        $this->dynamicPrice = $priceData;
+
+        // For compare price, use the variant's compare price if available
+        if ($priceData['variant'] && $priceData['variant']->compare_price_cents) {
+            $this->dynamicComparePrice = [
+                'price_cents' => $priceData['variant']->compare_price_cents,
+                'price' => $priceData['variant']->compare_price,
+                'compare_price' => $priceData['variant']->compare_price // Add this key for compatibility
+            ];
+        } else {
+            $this->dynamicComparePrice = null;
         }
     }
 
@@ -177,17 +305,23 @@ class ProductDetailPage extends Component
 
     public function getCurrentPrice()
     {
-        if ($this->selectedVariant) {
-            return $this->selectedVariant->price_cents / 100; // Convert cents to dollars
+        // Priority 1: Use dynamic price if available (real-time calculation)
+        if ($this->dynamicPrice && !empty($this->selectedOptions)) {
+            return $this->dynamicPrice['price'];
         }
 
-        // If no variant selected, return the lowest price for display
+        // Priority 2: Use selected variant final price (simplified pricing)
+        if ($this->selectedVariant) {
+            return $this->selectedVariant->final_price_in_dollars;
+        }
+
+        // Priority 3: If no variant selected, return the lowest price for display
         if ($this->product->has_variants) {
             $cheapestVariant = $this->product->getCheapestVariant();
-            return $cheapestVariant ? $cheapestVariant->price_cents / 100 : $this->product->price_cents / 100;
+            return $cheapestVariant ? $cheapestVariant->final_price_in_dollars : $this->product->price;
         }
 
-        return $this->product->price_cents / 100;
+        return $this->product->price;
     }
 
     public function getCurrentPriceRange()
@@ -240,11 +374,22 @@ class ProductDetailPage extends Component
 
     public function getCurrentComparePrice()
     {
-        if ($this->selectedVariant) {
+        // Priority 1: Use dynamic compare price if available
+        if ($this->dynamicComparePrice && !empty($this->selectedOptions)) {
+            return $this->dynamicComparePrice['compare_price'] ?? $this->dynamicComparePrice['price'] ?? null;
+        }
+
+        // Priority 2: Use selected variant compare price
+        if ($this->selectedVariant && $this->selectedVariant->compare_price_cents) {
             return $this->selectedVariant->compare_price;
         }
 
-        return $this->product->compare_price;
+        // Priority 3: Use product compare price
+        if ($this->product->compare_price_cents) {
+            return $this->product->compare_price;
+        }
+
+        return null;
     }
 
     public function getDiscountPercentage()
@@ -414,6 +559,41 @@ class ProductDetailPage extends Component
         return $attributes;
     }
     */
+
+    /**
+     * Check if product can be added to cart
+     */
+    public function canAddToCart()
+    {
+        return $this->isInStock() && (!$this->product->has_variants || $this->selectedVariant);
+    }
+
+    /**
+     * Computed property for canAddToCart (Livewire accessor)
+     */
+    public function getCanAddToCartProperty()
+    {
+        return $this->canAddToCart();
+    }
+
+    /**
+     * Debug method to check variant matching
+     */
+    public function debugVariantMatching()
+    {
+        $debug = [
+            'product_id' => $this->product->id,
+            'has_variants' => $this->product->has_variants,
+            'selected_options' => $this->selectedOptions,
+            'selected_variant_id' => $this->selectedVariant ? $this->selectedVariant->id : null,
+            'available_options' => $this->availableOptions,
+            'variants_count' => $this->product->variants()->count(),
+            'in_stock' => $this->isInStock(),
+            'can_add_to_cart' => $this->canAddToCart(),
+        ];
+
+        session()->flash('debug', $debug);
+    }
 
     public function render()
     {

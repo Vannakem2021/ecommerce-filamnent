@@ -18,6 +18,7 @@ class ProductAttributeValue extends Model
         'description',
         'is_active',
         'sort_order',
+        'price_modifier_cents',
     ];
 
     protected $casts = [
@@ -94,5 +95,37 @@ class ProductAttributeValue extends Model
     public function getIsColorAttribute()
     {
         return $this->attribute && $this->attribute->type === 'color';
+    }
+
+    /**
+     * Get the price modifier in dollars from cents
+     */
+    public function getPriceModifierAttribute()
+    {
+        return $this->price_modifier_cents ? $this->price_modifier_cents / 100 : 0;
+    }
+
+    /**
+     * Set the price modifier in cents from dollars
+     */
+    public function setPriceModifierAttribute($value)
+    {
+        $this->attributes['price_modifier_cents'] = $value ? round($value * 100) : 0;
+    }
+
+    /**
+     * Get formatted price modifier for display (e.g., "+$30.00", "-$10.00", "$0.00")
+     */
+    public function getFormattedPriceModifierAttribute()
+    {
+        $modifier = $this->price_modifier;
+
+        if ($modifier > 0) {
+            return '+$' . number_format($modifier, 2);
+        } elseif ($modifier < 0) {
+            return '-$' . number_format(abs($modifier), 2);
+        } else {
+            return '$0.00';
+        }
     }
 }
