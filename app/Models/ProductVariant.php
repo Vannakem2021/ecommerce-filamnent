@@ -14,12 +14,10 @@ class ProductVariant extends Model
         'product_id',
         'sku',
         'price_cents',
-        'override_price', // New column for simplified pricing
+        'override_price', // Simplified pricing override
         'stock_quantity',
-        'options', // New JSON column for variant choices
-        'image_url', // New column for variant-specific image
-
-        // Legacy fields (kept for backward compatibility)
+        'options', // JSON column for variant choices
+        'image_url', // Variant-specific image
         'name',
         'compare_price_cents',
         'cost_price_cents',
@@ -35,7 +33,7 @@ class ProductVariant extends Model
     ];
 
     protected $casts = [
-        'options' => 'array', // New JSON cast for variant options
+        'options' => 'array', // JSON cast for variant options
         'dimensions' => 'array',
         'images' => 'array',
         'track_inventory' => 'boolean',
@@ -470,79 +468,6 @@ class ProductVariant extends Model
         return $query->where('is_default', true);
     }
 
-    // ===== SPECIFICATION RELATIONSHIPS =====
-
-    /**
-     * Get the variant-level specification values
-     */
-    public function specificationValues()
-    {
-        return $this->hasMany(VariantSpecificationValue::class, 'product_variant_id');
-    }
-
-    /**
-     * Get specification values with their attributes
-     */
-    public function specificationsWithAttributes()
-    {
-        return $this->specificationValues()
-            ->with(['specificationAttribute', 'specificationAttributeOption'])
-            ->whereHas('specificationAttribute', function ($query) {
-                $query->where('is_active', true);
-            })
-            ->join('specification_attributes', 'specification_attributes.id', '=', 'variant_specification_values.specification_attribute_id')
-            ->orderBy('specification_attributes.sort_order')
-            ->orderBy('specification_attributes.name');
-    }
-
-    /**
-     * Get all specifications for this variant (product-level + variant-level)
-     */
-    public function getAllSpecifications()
-    {
-        $productSpecs = $this->product->specificationsWithAttributes()->get();
-        $variantSpecs = $this->specificationsWithAttributes()->get();
-
-        // Variant specs override product specs for the same attribute
-        $allSpecs = $productSpecs->keyBy('specification_attribute_id');
-        $variantSpecs->each(function ($spec) use ($allSpecs) {
-            $allSpecs[$spec->specification_attribute_id] = $spec;
-        });
-
-        return $allSpecs->values();
-    }
-
-    /**
-     * Set a variant-level specification value
-     */
-    public function setSpecificationValue($attributeId, $value)
-    {
-        $specValue = $this->specificationValues()
-            ->where('specification_attribute_id', $attributeId)
-            ->first();
-
-        if (!$specValue) {
-            $specValue = new VariantSpecificationValue([
-                'product_variant_id' => $this->id,
-                'specification_attribute_id' => $attributeId,
-            ]);
-        }
-
-        $specValue->setValue($value);
-        $specValue->save();
-
-        return $specValue;
-    }
-
-    /**
-     * Get a variant-level specification value
-     */
-    public function getSpecificationValue($attributeId)
-    {
-        return $this->specificationValues()
-            ->where('specification_attribute_id', $attributeId)
-            ->first();
-    }
     // ========================================
     // JSON VARIANT HELPER METHODS (Phase 4)
     // ========================================
