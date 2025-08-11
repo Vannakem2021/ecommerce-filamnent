@@ -66,7 +66,12 @@ class ProductVariant extends Model
             }
         });
 
-
+        // Auto-convert attributes to options when variant is saved
+        static::saved(function ($variant) {
+            if (empty($variant->options)) {
+                $variant->convertAttributesToOptions();
+            }
+        });
     }
 
     /**
@@ -77,7 +82,24 @@ class ProductVariant extends Model
         return $this->belongsTo(Product::class);
     }
 
+    /**
+     * Get the attribute values for this variant
+     */
+    public function attributeValues()
+    {
+        return $this->belongsToMany(ProductAttributeValue::class, 'product_variant_attributes')
+            ->withPivot('product_attribute_id')
+            ->with('attribute');
+    }
 
+    /**
+     * Get the attributes for this variant (through attribute values)
+     */
+    public function attributes()
+    {
+        return $this->belongsToMany(ProductAttribute::class, 'product_variant_attributes')
+            ->withPivot('product_attribute_value_id');
+    }
 
     /**
      * Get order items for this variant
@@ -201,25 +223,26 @@ class ProductVariant extends Model
     }
 
     /**
-     * Generate SKU based on product and JSON options
+     * Generate SKU based on product and attributes
      */
     public function generateSku()
     {
         $baseSku = $this->product ? $this->product->sku : 'PRODUCT';
-        $optionParts = [];
+        $attributeParts = [];
 
-        // Get option values for SKU generation from JSON
-        if ($this->options) {
-            foreach ($this->options as $key => $value) {
-                $optionParts[] = strtoupper(substr($value, 0, 3)); // First 3 chars
+        // Get attribute values for SKU generation
+        if ($this->exists) {
+            $attributeValues = $this->attributeValues()->with('attribute')->get();
+            foreach ($attributeValues as $value) {
+                $attributeParts[] = strtoupper($value->slug);
             }
         }
 
         $sku = $baseSku;
-        if (!empty($optionParts)) {
-            $sku .= '-' . implode('-', $optionParts);
+        if (!empty($attributeParts)) {
+            $sku .= '-' . implode('-', $attributeParts);
         } else {
-            // If no options, use a simple variant identifier
+            // If no attributes, use a simple variant identifier
             $sku .= '-VAR';
         }
 
@@ -248,7 +271,7 @@ class ProductVariant extends Model
     }
 
     /**
-     * Get the full variant name using JSON options
+     * Get the full variant name
      */
     public function getFullNameAttribute()
     {
@@ -257,16 +280,14 @@ class ProductVariant extends Model
         }
 
         $productName = $this->product ? $this->product->name : 'Product';
-        
-        if ($this->options && !empty($this->options)) {
-            $optionParts = [];
-            foreach ($this->options as $key => $value) {
-                $optionParts[] = $value;
-            }
-            return $productName . ' - ' . implode(' / ', $optionParts);
+        $attributeValues = $this->attributeValues()->with('attribute')->get();
+
+        if ($attributeValues->isEmpty()) {
+            return $productName;
         }
 
-        return $productName;
+        $attributeParts = $attributeValues->pluck('value')->toArray();
+        return $productName . ' - ' . implode(' / ', $attributeParts);
     }
 
     /**
@@ -444,7 +465,31 @@ class ProductVariant extends Model
             });
     }
 
+    /**
+     * Convert attribute values to JSON options (migration helper)
+     */
+    public function convertAttributesToOptions()
+    {
+        if (!empty($this->options)) {
+            return; // Already has options
+        }
 
+        $options = [];
+
+        // Always reload attribute values to ensure we have the latest data
+        $this->load('attributeValues.attribute');
+
+        foreach ($this->attributeValues as $attributeValue) {
+            if ($attributeValue->attribute) {
+                $options[$attributeValue->attribute->name] = $attributeValue->value;
+            }
+        }
+
+        if (!empty($options)) {
+            $this->options = $options;
+            $this->saveQuietly(); // Use saveQuietly to avoid infinite loop
+        }
+    }
 
     /**
      * Scope for active variants
@@ -543,110 +588,4 @@ class ProductVariant extends Model
             ->where('specification_attribute_id', $attributeId)
             ->first();
     }
-    // ========================================
-    // JSON VARIANT HELPER METHODS (Phase 4)
-    // ========================================
-    
-    /**
-     * Get variant options from JSON
-     */
-    public function getVariantOptions(): array
-    {
-        return $this->options ?? [];
-    }
-    
-    /**
-     * Get specific option value
-     */
-    public function getOptionValue(string $key, $default = null)
-    {
-        $options = $this->getVariantOptions();
-        return isset($options[$key]['value']) ? $options[$key]['value'] : 
-               (isset($options[$key]) && !is_array($options[$key]) ? $options[$key] : $default);
-    }
-    
-    /**
-     * Get option with full details
-     */
-    public function getOption(string $key): ?array
-    {
-        $options = $this->getVariantOptions();
-        return $options[$key] ?? null;
-    }
-    
-    /**
-     * Check if variant has specific option
-     */
-    public function hasOption(string $key): bool
-    {
-        $options = $this->getVariantOptions();
-        return isset($options[$key]);
-    }
-    
-    /**
-     * Get effective price (with override if set)
-     */
-    public function getEffectivePrice(): int
-    {
-        if ($this->override_price !== null) {
-            return $this->override_price;
-        }
-        
-        return $this->price_cents ?? $this->product->price_cents ?? 0;
-    }
-    
-    /**
-     * Get effective price in dollars
-     */
-    public function getEffectivePriceInDollars(): float
-    {
-        return $this->getEffectivePrice() / 100;
-    }
-    
-    /**
-     * Check if variant has been migrated to JSON system
-     */
-    public function isMigratedToJson(): bool
-    {
-        return $this->migrated_to_json === true;
-    }
-    
-    /**
-     * Get variant image URL or fallback to product images
-     */
-    public function getImageUrl(): ?string
-    {
-        if ($this->image_url) {
-            return $this->image_url;
-        }
-        
-        // Fallback to first product image
-        $productImages = $this->product->images ?? [];
-        return !empty($productImages) ? $productImages[0] : null;
-    }
-
-    
-    /**
-     * Get variant display name based on options
-     */
-    public function getDisplayName(): string
-    {
-        if ($this->name) {
-            return $this->name;
-        }
-        
-        $options = $this->getVariantOptions();
-        if (empty($options)) {
-            return "Variant #{$this->id}";
-        }
-        
-        $displayParts = [];
-        foreach ($options as $key => $value) {
-            $displayValue = is_array($value) ? ($value['value'] ?? $value) : $value;
-            $displayParts[] = $displayValue;
-        }
-        
-        return implode(' - ', $displayParts);
-    }
-
 }

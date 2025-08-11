@@ -33,8 +33,6 @@ class Product extends Model
         'variant_type',
         'variant_attributes',
         'attributes', // New JSON column for simplified attributes
-        'variant_config',
-        'migrated_to_json',
         'is_active',
         'is_featured',
         'in_stock',
@@ -54,7 +52,6 @@ class Product extends Model
         'images' => 'array',
         'variant_attributes' => 'array',
         'attributes' => 'array', // New JSON column for simplified attributes
-        'variant_config' => 'array',
         'track_inventory' => 'boolean',
         'has_variants' => 'boolean',
         'is_active' => 'boolean',
@@ -95,6 +92,15 @@ class Product extends Model
         });
 
         static::saved(function ($product) {
+            // Auto-generate variants when has_variants is enabled and variant_attributes are set
+            if ($product->has_variants &&
+                !empty($product->variant_attributes) &&
+                $product->variants()->count() === 0) {
+
+                // Generate variants based on attribute combinations
+                $product->generateVariants();
+            }
+
             // If has_variants was disabled, clean up any existing variants
             if (!$product->has_variants && $product->wasChanged('has_variants')) {
                 $product->variants()->delete();
@@ -152,7 +158,29 @@ class Product extends Model
         return $this->hasOne(ProductVariant::class)->where('is_default', true);
     }
 
+    /**
+     * Get the attributes used by this product's variants (relationship).
+     */
+    public function productAttributes()
+    {
+        return $this->belongsToMany(ProductAttribute::class, 'product_variant_attributes', 'product_id', 'product_attribute_id')
+            ->distinct();
+    }
 
+    /**
+     * Get the attributes used by this product's variants (collection method).
+     */
+    public function getProductAttributesCollection()
+    {
+        if (!$this->variant_attributes) {
+            return collect();
+        }
+
+        return ProductAttribute::whereIn('id', $this->variant_attributes)
+            ->with('activeValues')
+            ->ordered()
+            ->get();
+    }
 
     // ===== PRICE ACCESSORS AND MUTATORS =====
 
@@ -509,7 +537,58 @@ class Product extends Model
         }
     }
 
+    /**
+     * Create variants from attribute combinations
+     * @deprecated This method is part of the old complex system. Use simplified JSON-based variants instead.
+     */
+    public function generateVariants($attributeCombinations = null)
+    {
+        // DEPRECATED: This is part of the old complex normalized system
+        // For new implementations, create variants manually with JSON options
+        \Log::warning('generateVariants() is deprecated. Use simplified JSON-based variant creation instead.');
 
+        if (!$this->has_variants || !$this->variant_attributes) {
+            return false;
+        }
+
+        // If no combinations provided, generate all possible combinations
+        if (!$attributeCombinations) {
+            $attributeCombinations = $this->generateAttributeCombinations();
+        }
+
+        foreach ($attributeCombinations as $combination) {
+            $this->createVariantFromCombination($combination);
+        }
+
+        return true;
+    }
+
+    /**
+     * Generate all possible attribute combinations
+     * @deprecated This method is part of the old complex system. Use simplified JSON-based variants instead.
+     */
+    protected function generateAttributeCombinations()
+    {
+        // DEPRECATED: This is part of the old complex normalized system
+        \Log::warning('generateAttributeCombinations() is deprecated. Use simplified JSON-based variant creation instead.');
+
+        $attributes = $this->getProductAttributesCollection();
+        $combinations = [[]];
+
+        foreach ($attributes as $attribute) {
+            $newCombinations = [];
+            foreach ($combinations as $combination) {
+                foreach ($attribute->activeValues as $value) {
+                    $newCombination = $combination;
+                    $newCombination[$attribute->id] = $value->id;
+                    $newCombinations[] = $newCombination;
+                }
+            }
+            $combinations = $newCombinations;
+        }
+
+        return $combinations;
+    }
 
     // ========================================
     // SIMPLIFIED VARIANT CREATION METHODS
@@ -568,7 +647,69 @@ class Product extends Model
         return $baseSku . '-' . $productSku . '-' . implode('-', $optionParts);
     }
 
+    /**
+     * Create a variant from attribute combination
+     * @deprecated This method is part of the old complex system. Use createSimpleVariant() instead.
+     */
+    protected function createVariantFromCombination($combination)
+    {
+        // Check if variant already exists
+        $existingVariant = $this->variants()
+            ->whereHas('attributeValues', function ($query) use ($combination) {
+                $query->whereIn('product_attribute_value_id', array_values($combination));
+            }, '=', count($combination))
+            ->first();
 
+        if ($existingVariant) {
+            return $existingVariant;
+        }
+
+        // Calculate variant price based on base price + attribute value modifiers
+        $variantPriceCents = $this->price_cents;
+        $variantComparePriceCents = $this->compare_price_cents;
+        $variantCostPriceCents = $this->cost_price_cents;
+
+        foreach ($combination as $attributeId => $valueId) {
+            $attributeValue = ProductAttributeValue::find($valueId);
+            if ($attributeValue && $attributeValue->price_modifier_cents) {
+                $variantPriceCents += $attributeValue->price_modifier_cents;
+
+                // Also adjust compare price if it exists
+                if ($variantComparePriceCents) {
+                    $variantComparePriceCents += $attributeValue->price_modifier_cents;
+                }
+            }
+        }
+
+        // Create new variant
+        $variant = $this->variants()->create([
+            'price_cents' => $variantPriceCents,
+            'compare_price_cents' => $variantComparePriceCents,
+            'cost_price_cents' => $variantCostPriceCents,
+            'stock_quantity' => $this->stock_quantity > 0 ? $this->stock_quantity : 10, // Default to 10 if product stock is 0
+            'stock_status' => $this->stock_status ?: 'in_stock', // Default to in_stock if not set
+            'low_stock_threshold' => $this->low_stock_threshold ?: 5,
+            'track_inventory' => $this->track_inventory ?? true,
+            'is_active' => true,
+            'is_default' => $this->variants()->count() === 0, // First variant is default
+        ]);
+
+        // Attach attribute values
+        foreach ($combination as $attributeId => $valueId) {
+            $variant->attributeValues()->attach($valueId, [
+                'product_attribute_id' => $attributeId
+            ]);
+        }
+
+        // Regenerate SKU after attributes are attached
+        $variant->sku = $variant->generateSku();
+        $variant->save();
+
+        // Convert attributes to JSON options for simplified system
+        $variant->convertAttributesToOptions();
+
+        return $variant;
+    }
 
     // ========================================
     // SIMPLIFIED VARIANT METHODS (JSON-based)
@@ -784,7 +925,135 @@ class Product extends Model
 
 
 
+    // ========================================
+    // LEGACY DYNAMIC PRICING METHODS (DEPRECATED)
+    // ========================================
 
+    /**
+     * Calculate dynamic price based on selected options using Option B approach
+     * (base price + sum of attribute modifiers)
+     */
+    public function calculateDynamicPrice($selectedOptions = [])
+    {
+        $basePriceCents = $this->price_cents;
+        $totalModifierCents = 0;
+
+        if (empty($selectedOptions)) {
+            return [
+                'price_cents' => $basePriceCents,
+                'price' => $basePriceCents / 100,
+                'modifiers' => []
+            ];
+        }
+
+        $modifiers = [];
+
+        // Get all attribute values that match the selected options
+        foreach ($selectedOptions as $attributeName => $selectedValue) {
+            $attribute = ProductAttribute::where('name', $attributeName)->first();
+            if (!$attribute) {
+                continue;
+            }
+
+            $attributeValue = $attribute->values()
+                ->where('value', $selectedValue)
+                ->first();
+
+            if ($attributeValue && $attributeValue->price_modifier_cents) {
+                $totalModifierCents += $attributeValue->price_modifier_cents;
+                $modifiers[] = [
+                    'attribute' => $attributeName,
+                    'value' => $selectedValue,
+                    'modifier_cents' => $attributeValue->price_modifier_cents,
+                    'modifier' => $attributeValue->price_modifier_cents / 100
+                ];
+            }
+        }
+
+        $finalPriceCents = $basePriceCents + $totalModifierCents;
+
+        return [
+            'price_cents' => $finalPriceCents,
+            'price' => $finalPriceCents / 100,
+            'base_price_cents' => $basePriceCents,
+            'base_price' => $basePriceCents / 100,
+            'total_modifier_cents' => $totalModifierCents,
+            'total_modifier' => $totalModifierCents / 100,
+            'modifiers' => $modifiers
+        ];
+    }
+
+    /**
+     * Calculate dynamic compare price based on selected options
+     */
+    public function calculateDynamicComparePrice($selectedOptions = [])
+    {
+        if (!$this->compare_price_cents) {
+            return null;
+        }
+
+        $baseComparePriceCents = $this->compare_price_cents;
+        $totalModifierCents = 0;
+
+        // Apply the same modifiers to compare price
+        foreach ($selectedOptions as $attributeName => $selectedValue) {
+            $attribute = ProductAttribute::where('name', $attributeName)->first();
+            if (!$attribute) {
+                continue;
+            }
+
+            $attributeValue = $attribute->values()
+                ->where('value', $selectedValue)
+                ->first();
+
+            if ($attributeValue && $attributeValue->price_modifier_cents) {
+                $totalModifierCents += $attributeValue->price_modifier_cents;
+            }
+        }
+
+        $finalComparePriceCents = $baseComparePriceCents + $totalModifierCents;
+
+        return [
+            'compare_price_cents' => $finalComparePriceCents,
+            'compare_price' => $finalComparePriceCents / 100
+        ];
+    }
+
+
+
+    /**
+     * Get available price modifiers for frontend
+     */
+    public function getPriceModifiers()
+    {
+        $modifiers = [];
+
+        // Get all attributes used by this product's variants
+        $attributeNames = collect($this->getAvailableOptions())->keys();
+
+        foreach ($attributeNames as $attributeName) {
+            $attribute = ProductAttribute::where('name', $attributeName)->first();
+            if (!$attribute) {
+                continue;
+            }
+
+            $attributeModifiers = [];
+            foreach ($attribute->values as $value) {
+                if ($value->price_modifier_cents !== 0) {
+                    $attributeModifiers[$value->value] = [
+                        'modifier_cents' => $value->price_modifier_cents,
+                        'modifier' => $value->price_modifier_cents / 100
+                    ];
+                }
+            }
+
+            if (!empty($attributeModifiers)) {
+                $modifiers[$attributeName] = $attributeModifiers;
+            }
+        }
+
+        return $modifiers;
+    }
 
     /**
      * Get variant by SKU (simplified lookup)
@@ -866,46 +1135,4 @@ class Product extends Model
             ->where('specification_attribute_id', $attributeId)
             ->first();
     }
-    // ========================================
-    // JSON VARIANT HELPER METHODS (Phase 4)
-    // ========================================
-    
-    /**
-     * Get variant configuration from JSON
-     */
-    public function getVariantConfiguration(): array
-    {
-        return $this->variant_config ?? [];
-    }
-    
-    /**
-     * Get product attributes from JSON
-     */
-    public function getProductAttributes(): array
-    {
-        return $this->attributes ?? [];
-    }
-    
-    /**
-     * Check if product has been migrated to JSON system
-     */
-    public function isMigratedToJson(): bool
-    {
-        return $this->migrated_to_json === true;
-    }
-    
-    /**
-     * Get variant count from configuration
-     */
-    public function getVariantCount(): int
-    {
-        $config = $this->getVariantConfiguration();
-        return $config['variant_count'] ?? $this->variants()->count();
-    }
-    
-
-
-
-
-
 }

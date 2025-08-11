@@ -1,0 +1,290 @@
+---
+globs: app/Livewire/*.php,resources/views/livewire/*.blade.php
+---
+
+# Livewire Component Patterns
+
+This project uses Livewire 3.x for interactive frontend components. Follow these patterns for consistency.
+
+## Component Structure
+
+### Base Component Template
+```php
+<?php
+
+namespace App\Livewire;
+
+use Livewire\Component;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
+
+class ComponentNamePage extends Component
+{
+    use LivewireAlert;
+
+    // Public properties for component state
+    public $property = null;
+    
+    // Computed properties
+    public function getComputedProperty()
+    {
+        return $this->property;
+    }
+    
+    // Actions
+    public function performAction()
+    {
+        // Validation, business logic, alerts
+    }
+    
+    public function render()
+    {
+        return view('livewire.component-name-page')
+            ->layoutData(['title' => 'Page Title']);
+    }
+}
+```
+
+## Key Patterns from Existing Components
+
+### Product Detail Page ([ProductDetailPage.php](mdc:app/Livewire/ProductDetailPage.php))
+```php
+// Variant selection pattern
+public function selectOption($optionName, $optionValue)
+{
+    $this->selectedOptions[$optionName] = $optionValue;
+    $this->findMatchingVariant();
+    $this->updatePricing();
+    
+    // Emit events for frontend updates
+    $this->dispatch('priceUpdated', $priceData);
+}
+
+// Validation pattern
+public function hasAllRequiredOptions()
+{
+    return count($this->selectedOptions) >= count($this->availableOptions);
+}
+
+// Cart integration pattern
+public function addToCart()
+{
+    if (!$this->isInStock()) {
+        $this->alert('error', 'Product is out of stock!');
+        return;
+    }
+    
+    $result = CartManagement::addItemToCartWithVariant(/*...*/);
+    
+    if (isset($result['error'])) {
+        $this->alert('error', $result['error']);
+        return;
+    }
+    
+    $this->alert('success', 'Product added to cart!');
+}
+```
+
+### Cart Page ([CartPage.php](mdc:app/Livewire/CartPage.php))
+```php
+// Quantity management pattern
+public function increaseQty($item_key)
+{
+    $result = CartManagement::incrementQuantityToCartItem($item_key);
+    
+    if (isset($result['error'])) {
+        $this->alert('error', $result['error']);
+        return;
+    }
+    
+    $this->dispatch('update-cart-count', total_count: $this->getTotalCount());
+}
+
+// Remove items pattern
+public function removeItem($item_key)
+{
+    CartManagement::removeCartItems($item_key);
+    $this->alert('success', 'Item removed from cart');
+}
+```
+
+## State Management
+
+### Public Properties
+- Use public properties for component state that needs to be tracked
+- Initialize properties in `mount()` method
+- Use `live()` modifier for real-time updates
+
+### Computed Properties
+```php
+// Use computed properties for derived state
+public function getCurrentPriceProperty()
+{
+    return $this->calculateCurrentPrice();
+}
+
+// Access in blade: {{ $this->currentPrice }}
+```
+
+### Event Dispatching
+```php
+// Dispatch to other components
+$this->dispatch('update-cart-count', total_count: $count)->to(Navbar::class);
+
+// Dispatch to frontend JavaScript
+$this->dispatch('priceUpdated', [
+    'price' => $this->currentPrice,
+    'variant' => $this->selectedVariant
+]);
+```
+
+## Validation Patterns
+
+### Input Validation
+```php
+protected $rules = [
+    'email' => 'required|email',
+    'quantity' => 'required|integer|min:1',
+];
+
+public function performAction()
+{
+    $this->validate();
+    // Process validated data
+}
+```
+
+### Business Logic Validation
+```php
+public function addToCart()
+{
+    // Check stock availability
+    if (!$this->isInStock()) {
+        $this->alert('error', 'Product is out of stock!');
+        return;
+    }
+    
+    // Check required selections
+    if ($this->product->has_variants && !$this->selectedVariant) {
+        $this->alert('error', 'Please select all product options');
+        return;
+    }
+    
+    // Proceed with cart operation
+}
+```
+
+## Alert Patterns
+
+### Using LivewireAlert
+```php
+// Success alerts
+$this->alert('success', 'Operation completed!', [
+    'position' => 'top-end',
+    'timer' => 3000,
+    'toast' => true,
+]);
+
+// Error alerts
+$this->alert('error', 'Something went wrong!', [
+    'position' => 'top-end',
+    'timer' => 3000,
+    'toast' => true,
+]);
+
+// Confirmation dialogs
+$this->confirm('Are you sure?', [
+    'onConfirmed' => 'confirmed',
+    'text' => 'This action cannot be undone',
+]);
+```
+
+## View Patterns
+
+### Blade Template Structure
+```blade
+<div class="container">
+    {{-- Loading states --}}
+    <div wire:loading class="loading-spinner">
+        Loading...
+    </div>
+    
+    {{-- Main content --}}
+    <div wire:loading.remove>
+        {{-- Component content --}}
+    </div>
+    
+    {{-- Error handling --}}
+    @if($errors->any())
+        <div class="alert alert-danger">
+            @foreach($errors->all() as $error)
+                <p>{{ $error }}</p>
+            @endforeach
+        </div>
+    @endif
+</div>
+```
+
+### Alpine.js Integration
+```blade
+<div x-data="{ showModal: false }" @price-updated.window="updatePrice($event.detail)">
+    <button @click="showModal = true">Open Modal</button>
+    
+    <div x-show="showModal" x-transition>
+        {{-- Modal content --}}
+    </div>
+</div>
+```
+
+## Performance Best Practices
+
+### Lazy Loading
+```php
+// Use lazy loading for expensive operations
+public function mount($slug)
+{
+    $this->product = Product::where('slug', $slug)->firstOrFail();
+    // Don't load relationships until needed
+}
+
+// Load relationships when accessed
+public function getVariantsProperty()
+{
+    return $this->product->variants()->get();
+}
+```
+
+### Efficient Updates
+```php
+// Use targeted updates
+public function updateQuantity($item_key, $quantity)
+{
+    // Update only specific item, not entire cart
+    CartManagement::updateItemQuantity($item_key, $quantity);
+    
+    // Emit specific events
+    $this->dispatch('item-updated', item_key: $item_key);
+}
+```
+
+## Testing Patterns
+
+### Component Testing
+```php
+public function test_can_select_variant_options()
+{
+    $product = Product::factory()->withVariants()->create();
+    
+    Livewire::test(ProductDetailPage::class, ['slug' => $product->slug])
+        ->call('selectOption', 'Color', 'Black')
+        ->assertSet('selectedOptions.Color', 'Black')
+        ->assertNotNull('selectedVariant');
+}
+```
+
+## Common Pitfalls to Avoid
+
+1. **Don't** use private properties for component state
+2. **Don't** forget to validate user inputs
+3. **Don't** make direct database queries in views
+4. **Don't** forget to emit events for frontend updates
+5. **Don't** skip error handling for cart operations

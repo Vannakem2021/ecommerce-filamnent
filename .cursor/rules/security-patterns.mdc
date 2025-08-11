@@ -1,0 +1,439 @@
+---
+description: Security patterns and validation requirements
+---
+
+# Security Patterns and Validation
+
+This Laravel ecommerce project implements multiple security layers. Follow these patterns to maintain security standards.
+
+## Cart Security
+
+### Server-Side Validation ([CartValidationService.php](mdc:app/Services/CartValidationService.php))
+```php
+// Always validate cart items server-side
+static public function validateCart($cart_items)
+{
+    $errors = [];
+    $corrected_items = [];
+
+    foreach ($cart_items as $item) {
+        // Validate product exists and is active
+        if ($item['type'] === 'variant') {
+            $variant = ProductVariant::find($item['variant_id']);
+            if (!$variant || !$variant->is_active) {
+                $errors[] = 'invalid_variant';
+                continue;
+            }
+            
+            // Validate price hasn't been manipulated
+            $expected_price = $variant->final_price_in_dollars;
+            if (abs($item['unit_amount'] - $expected_price) > 0.01) {
+                $errors[] = 'price_mismatch';
+                $item['unit_amount'] = $expected_price; // Correct the price
+            }
+        }
+        
+        $corrected_items[] = self::sanitizeCartItem($item);
+    }
+
+    return [
+        'valid' => empty($errors),
+        'errors' => $errors,
+        'corrected_items' => $corrected_items
+    ];
+}
+```
+
+### Rate Limiting
+```php
+// Implement rate limiting for cart operations
+static public function validateCartPermissions($action, $user_id)
+{
+    $key = "cart_operations:{$user_id}";
+    $attempts = Cache::get($key, 0);
+    
+    if ($attempts > 50) { // 50 operations per minute
+        return false;
+    }
+    
+    Cache::put($key, $attempts + 1, 60); // 1 minute window
+    return true;
+}
+```
+
+### Input Sanitization
+```php
+static public function sanitizeCartItem($item)
+{
+    return [
+        'item_key' => strip_tags($item['item_key'] ?? ''),
+        'product_id' => (int) ($item['product_id'] ?? 0),
+        'variant_id' => isset($item['variant_id']) ? (int) $item['variant_id'] : null,
+        'quantity' => max(1, (int) ($item['quantity'] ?? 1)),
+        'unit_amount' => (float) ($item['unit_amount'] ?? 0),
+        'variant_options' => is_array($item['variant_options'] ?? null) 
+            ? $item['variant_options'] 
+            : [],
+    ];
+}
+```
+
+## Authentication and Authorization
+
+### Role-Based Access Control
+```php
+// Use Spatie Laravel Permission for RBAC
+class ProductResource extends Resource
+{
+    public static function canViewAny(): bool
+    {
+        return auth()->user()->can('products.view');
+    }
+
+    public static function canCreate(): bool
+    {
+        return auth()->user()->can('products.create');
+    }
+
+    public static function canEdit($record): bool
+    {
+        return auth()->user()->can('products.edit');
+    }
+}
+```
+
+### Middleware Protection
+```php
+// Apply middleware to sensitive routes
+Route::middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('/admin/products', [ProductController::class, 'index']);
+});
+
+// Custom permission middleware
+class CheckPermission
+{
+    public function handle($request, Closure $next, $permission)
+    {
+        if (!auth()->user()->can($permission)) {
+            abort(403, 'Unauthorized action.');
+        }
+        
+        return $next($request);
+    }
+}
+```
+
+## Data Validation
+
+### Model Validation
+```php
+class Product extends Model
+{
+    protected $fillable = [
+        'name', 'slug', 'price_cents', 'stock_quantity'
+        // Never include sensitive fields like 'user_id' directly
+    ];
+
+    protected $casts = [
+        'price_cents' => 'integer',
+        'stock_quantity' => 'integer',
+        'is_active' => 'boolean',
+        'images' => 'array',
+        'attributes' => 'array', // JSON validation handled separately
+    ];
+
+    // Validate JSON data
+    public function setAttributesAttribute($value)
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new InvalidArgumentException('Invalid JSON for attributes');
+            }
+            $value = $decoded;
+        }
+        
+        // Sanitize and validate structure
+        $this->attributes['attributes'] = $this->sanitizeAttributes($value);
+    }
+}
+```
+
+### Form Request Validation
+```php
+class UpdateProductRequest extends FormRequest
+{
+    public function authorize()
+    {
+        return $this->user()->can('products.edit');
+    }
+
+    public function rules()
+    {
+        return [
+            'name' => 'required|string|max:255',
+            'price' => 'required|numeric|min:0.01|max:999999.99',
+            'stock_quantity' => 'required|integer|min:0',
+            'images.*' => 'image|max:2048', // 2MB max per image
+            'attributes' => 'nullable|json',
+        ];
+    }
+
+    public function messages()
+    {
+        return [
+            'price.min' => 'Price must be at least $0.01',
+            'images.*.image' => 'All files must be valid images',
+        ];
+    }
+}
+```
+
+## SQL Injection Prevention
+
+### Use Eloquent ORM
+```php
+// ✅ GOOD: Using Eloquent prevents SQL injection
+$products = Product::where('category_id', $request->category_id)
+    ->where('price_cents', '<=', $request->max_price * 100)
+    ->get();
+
+// ✅ GOOD: Using parameter binding
+$products = DB::select(
+    'SELECT * FROM products WHERE category_id = ? AND price_cents <= ?',
+    [$request->category_id, $request->max_price * 100]
+);
+
+// ❌ BAD: Never concatenate user input into SQL
+// $products = DB::select("SELECT * FROM products WHERE name = '$request->name'");
+```
+
+### JSON Query Security
+```php
+// ✅ GOOD: Safe JSON querying
+$variants = ProductVariant::whereJsonContains('options->Color', $color)->get();
+
+// ✅ GOOD: With validation
+if (in_array($color, ['Black', 'White', 'Blue', 'Red'])) {
+    $variants = ProductVariant::whereJsonContains('options->Color', $color)->get();
+}
+```
+
+## File Upload Security
+
+### Image Upload Validation
+```php
+// In Filament form
+FileUpload::make('images')
+    ->multiple()
+    ->disk('public')
+    ->directory('products')
+    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+    ->maxSize(2048) // 2MB
+    ->maxFiles(5)
+    ->imageEditor()
+    ->imageEditorAspectRatios(['16:9', '4:3', '1:1']);
+```
+
+### File Storage Best Practices
+```php
+// config/filesystems.php
+'public' => [
+    'driver' => 'local',
+    'root' => storage_path('app/public'),
+    'url' => env('APP_URL').'/storage',
+    'visibility' => 'public',
+    'throw' => false,
+],
+
+// Never store uploaded files in public directory directly
+// Always use storage/app/public with proper symlink
+```
+
+## API Security
+
+### API Rate Limiting
+```php
+// routes/api.php
+Route::middleware(['throttle:api'])->group(function () {
+    Route::get('/products', [ApiProductController::class, 'index']);
+});
+
+// config/cache.php - Configure rate limiting
+'throttle' => [
+    'api' => [
+        'driver' => 'redis',
+        'prefix' => 'throttle:api',
+    ],
+],
+```
+
+### API Authentication
+```php
+class ProductSpecificationController extends Controller
+{
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum')->except(['show']);
+        $this->middleware('throttle:60,1'); // 60 requests per minute
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'specifications' => 'required|array',
+            'specifications.*.attribute_id' => 'required|exists:specification_attributes,id',
+        ]);
+
+        // Additional authorization check
+        if (!$request->user()->can('products.edit')) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        // Process request...
+    }
+}
+```
+
+## Cross-Site Scripting (XSS) Prevention
+
+### Blade Template Security
+```blade
+{{-- ✅ GOOD: Automatic escaping --}}
+<h1>{{ $product->name }}</h1>
+<p>{{ $product->description }}</p>
+
+{{-- ✅ GOOD: HTML allowed (only for trusted content) --}}
+<div>{!! $product->trusted_html_content !!}</div>
+
+{{-- ❌ BAD: Never use {!! !!} for user input --}}
+{{-- <div>{!! $user_input !!}</div> --}}
+```
+
+### JSON Output Security
+```php
+// ✅ GOOD: Laravel automatically escapes JSON
+return response()->json([
+    'name' => $product->name, // Automatically escaped
+    'options' => $variant->options, // Array automatically handled
+]);
+
+// ✅ GOOD: Explicit validation for API responses
+return response()->json([
+    'name' => strip_tags($product->name),
+    'description' => Str::limit(strip_tags($product->description), 200),
+]);
+```
+
+## CSRF Protection
+
+### Form Protection
+```blade
+{{-- All forms automatically include CSRF token --}}
+<form method="POST" action="/cart/add">
+    @csrf
+    <input type="hidden" name="product_id" value="{{ $product->id }}">
+    <button type="submit">Add to Cart</button>
+</form>
+```
+
+### Livewire CSRF
+```php
+// Livewire automatically handles CSRF for component actions
+class CartPage extends Component
+{
+    // This action is automatically CSRF protected
+    public function addToCart($productId)
+    {
+        // Action logic
+    }
+}
+```
+
+## Environment Security
+
+### Environment Variables
+```bash
+# .env - Never commit to version control
+APP_KEY=base64:your-secret-key
+DB_PASSWORD=secure-password
+STRIPE_SECRET=sk_live_secure-key
+
+# Use different keys for different environments
+APP_ENV=production
+APP_DEBUG=false
+```
+
+### Configuration Security
+```php
+// config/app.php
+'debug' => env('APP_DEBUG', false), // Always false in production
+
+// config/database.php - Use SSL in production
+'mysql' => [
+    'sslmode' => env('DB_SSLMODE', 'prefer'),
+    'options' => extension_loaded('pdo_mysql') ? array_filter([
+        PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+    ]) : [],
+],
+```
+
+## Security Headers
+
+### Middleware for Headers
+```php
+class SecurityHeaders
+{
+    public function handle($request, Closure $next)
+    {
+        $response = $next($request);
+        
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+        $response->headers->set('X-Frame-Options', 'DENY');
+        $response->headers->set('X-XSS-Protection', '1; mode=block');
+        $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        
+        return $response;
+    }
+}
+```
+
+## Logging and Monitoring
+
+### Security Event Logging
+```php
+// Log security events
+class CartValidationService
+{
+    static public function validateCart($cart_items)
+    {
+        // ... validation logic ...
+        
+        if (!empty($errors)) {
+            Log::warning('Cart validation failed', [
+                'user_id' => auth()->id(),
+                'ip' => request()->ip(),
+                'errors' => $errors,
+                'user_agent' => request()->userAgent(),
+            ]);
+        }
+        
+        return $validation;
+    }
+}
+```
+
+## Security Checklist
+
+### Before Deployment
+- [ ] Enable HTTPS with valid SSL certificate
+- [ ] Set `APP_DEBUG=false` in production
+- [ ] Use strong, unique passwords and API keys
+- [ ] Enable database SSL connections
+- [ ] Configure proper file upload limits
+- [ ] Set up rate limiting for API endpoints
+- [ ] Implement proper error handling (don't expose stack traces)
+- [ ] Use Content Security Policy headers
+- [ ] Regular security updates for dependencies
+- [ ] Implement proper backup and disaster recovery

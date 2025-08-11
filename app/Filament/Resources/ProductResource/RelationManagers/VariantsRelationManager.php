@@ -2,8 +2,7 @@
 
 namespace App\Filament\Resources\ProductResource\RelationManagers;
 
-use App\Models\ProductAttribute;
-use App\Models\ProductAttributeValue;
+
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -75,15 +74,7 @@ class VariantsRelationManager extends RelationManager
                     ])
                     ->columns(2),
 
-                Forms\Components\Section::make('Legacy Attributes (Old System)')
-                    ->schema([
-                        Forms\Components\Placeholder::make('attribute_info')
-                            ->label('')
-                            ->content('⚠️ This is the old complex system. Use "Variant Options" above for the simplified approach.')
-                            ->visible(fn ($livewire) => $livewire->ownerRecord->has_variants && $livewire->ownerRecord->variant_attributes),
-                    ])
-                    ->visible(fn ($livewire) => $livewire->ownerRecord->has_variants && $livewire->ownerRecord->variant_attributes)
-                    ->collapsed(),
+
 
                 Forms\Components\Section::make('Pricing (Simplified System)')
                     ->schema([
@@ -92,13 +83,7 @@ class VariantsRelationManager extends RelationManager
                             ->content('✅ This variant uses simplified pricing: final_price = override_price ?? product.base_price')
                             ->columnSpanFull(),
 
-                        Forms\Components\TextInput::make('price')
-                            ->label('Legacy Price (Deprecated)')
-                            ->helperText('⚠️ This field is deprecated. Use Override Price above for variant-specific pricing.')
-                            ->numeric()
-                            ->prefix('INR')
-                            ->step(0.01)
-                            ->disabled(),
+
 
                         Forms\Components\TextInput::make('compare_price')
                             ->label('Compare Price')
@@ -203,10 +188,11 @@ class VariantsRelationManager extends RelationManager
                     })
                     ->tooltip('Custom price for this variant. Empty = uses base price'),
 
-                Tables\Columns\TextColumn::make('price')
-                    ->label('Price')
-                    ->money('INR')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('final_price_in_dollars')
+                    ->label('Final Price')
+                    ->money('USD')
+                    ->sortable()
+                    ->tooltip('Calculated from override_price or product base price'),
 
                 Tables\Columns\TextColumn::make('stock_quantity')
                     ->label('Stock')
@@ -261,31 +247,7 @@ class VariantsRelationManager extends RelationManager
                     ->toggle(),
             ])
             ->headerActions([
-                Tables\Actions\Action::make('generate_variants')
-                    ->label('Generate All Variants')
-                    ->icon('heroicon-o-sparkles')
-                    ->color('success')
-                    ->visible(fn ($livewire) => $livewire->ownerRecord->has_variants && $livewire->ownerRecord->variant_attributes)
-                    ->action(function ($livewire) {
-                        $product = $livewire->ownerRecord;
-                        $generated = $product->generateVariants();
 
-                        if ($generated) {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Variants Generated')
-                                ->body('All possible variants have been generated based on selected attributes.')
-                                ->success()
-                                ->send();
-                        } else {
-                            \Filament\Notifications\Notification::make()
-                                ->title('Generation Failed')
-                                ->body('Could not generate variants. Please check product configuration.')
-                                ->danger()
-                                ->send();
-                        }
-                    })
-                    ->requiresConfirmation()
-                    ->modalDescription('This will generate all possible combinations of the selected attributes as variants.'),
 
                 Tables\Actions\CreateAction::make()
                     ->visible(fn ($livewire) => $livewire->ownerRecord->has_variants)
@@ -314,10 +276,8 @@ class VariantsRelationManager extends RelationManager
 
                 Tables\Actions\EditAction::make()
                     ->after(function ($record) {
-                        // Regenerate SKU after editing (in case attributes changed)
+                        // Regenerate SKU after editing (in case options changed)
                         $record->regenerateSku();
-                        // Convert attributes to JSON options for simplified system
-                        $record->convertAttributesToOptions();
                     }),
 
                 Tables\Actions\DeleteAction::make(),
@@ -347,29 +307,7 @@ class VariantsRelationManager extends RelationManager
                         ->requiresConfirmation()
                         ->modalDescription('This will regenerate SKUs for all selected variants based on their current attributes.'),
 
-                    Tables\Actions\BulkAction::make('convert_to_json_options')
-                        ->label('🔄 Convert to JSON Options')
-                        ->icon('heroicon-o-arrow-path-rounded-square')
-                        ->color('success')
-                        ->action(function ($records) {
-                            $count = 0;
-                            foreach ($records as $record) {
-                                $oldOptions = $record->options;
-                                $record->convertAttributesToOptions();
-                                $record->refresh();
-                                if ($record->options !== $oldOptions) {
-                                    $count++;
-                                }
-                            }
 
-                            \Filament\Notifications\Notification::make()
-                                ->title('Options Converted')
-                                ->body("Converted {$count} variants to JSON options system.")
-                                ->success()
-                                ->send();
-                        })
-                        ->requiresConfirmation()
-                        ->modalDescription('This will convert attribute values to JSON options for the simplified variant system.'),
 
                     Tables\Actions\BulkAction::make('set_paired_pricing')
                         ->label('💰 Set Paired Pricing')

@@ -558,44 +558,7 @@ class ProductDetailPage extends Component
         ]);
     }
 
-    // ========================================
-    // LEGACY COMPLEX ATTRIBUTE SYSTEM (DEPRECATED)
-    // ========================================
-    // This method is no longer used in the simplified variant system
-    // Keeping for reference during transition period
 
-    /*
-    public function getProductAttributesProperty()
-    {
-        if (!$this->product->has_variants) {
-            return collect();
-        }
-
-        // First try to get from variant_attributes field
-        $attributes = $this->product->getProductAttributesCollection();
-
-        // If that's empty, get from actual variants (fallback)
-        if ($attributes->isEmpty() && $this->product->variants->isNotEmpty()) {
-            $attributeIds = $this->product->variants()
-                ->with('attributeValues.attribute')
-                ->get()
-                ->pluck('attributeValues')
-                ->flatten()
-                ->pluck('attribute.id')
-                ->unique()
-                ->values();
-
-            if ($attributeIds->isNotEmpty()) {
-                $attributes = \App\Models\ProductAttribute::whereIn('id', $attributeIds)
-                    ->with('activeValues')
-                    ->ordered()
-                    ->get();
-            }
-        }
-
-        return $attributes;
-    }
-    */
 
     /**
      * Check if product can be added to cart

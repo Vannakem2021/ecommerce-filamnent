@@ -52,20 +52,10 @@
                             @endforeach
                         </div>
                     </div>
-                    <!-- Product Status Filter -->
+                    <!-- Quick Filter Options -->
                     <div class="mb-6">
-                        <h3 class="font-semibold text-gray-900 mb-3">Product Status</h3>
+                        <h3 class="font-semibold text-gray-900 mb-3">Quick Filters</h3>
                         <div class="space-y-2">
-                            <label class="flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    id="featured"
-                                    wire:model.live="featured"
-                                    value="1"
-                                    class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
-                                >
-                                <span class="ml-2 text-gray-700">Featured Products</span>
-                            </label>
                             <label class="flex items-center cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -74,7 +64,7 @@
                                     wire:model.live="on_sale"
                                     class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
                                 >
-                                <span class="ml-2 text-gray-700">On Sale</span>
+                                <span class="ml-2 text-gray-700">🏷️ On Sale</span>
                             </label>
                         </div>
                     </div>
@@ -103,61 +93,7 @@
                         </div>
                     </div>
 
-                    <!-- Specification Filters -->
-                    @if($filterableSpecs->isNotEmpty())
-                        @foreach($filterableSpecs as $spec)
-                            <div class="mb-6">
-                                <h3 class="font-semibold text-gray-900 mb-3">{{ $spec->name }}</h3>
 
-                                @if($spec->data_type === 'enum' && $spec->options->isNotEmpty())
-                                    <!-- Enum/Select Filter -->
-                                    <div class="space-y-2">
-                                        @foreach($spec->options as $option)
-                                            <label class="flex items-center cursor-pointer" wire:key="spec-{{ $spec->id }}-{{ $option->id }}">
-                                                <input
-                                                    type="checkbox"
-                                                    wire:model.live="specification_filters.{{ $spec->code }}"
-                                                    value="{{ $option->id }}"
-                                                    class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
-                                                >
-                                                <span class="ml-2 text-gray-700">{{ $option->value }}</span>
-                                            </label>
-                                        @endforeach
-                                    </div>
-
-                                @elseif($spec->data_type === 'number')
-                                    <!-- Numeric Range Filter -->
-                                    <div class="space-y-2">
-                                        <div class="text-center text-sm text-gray-600">
-                                            Min: {{ $specification_filters[$spec->code] ?? 0 }}{{ $spec->unit ? ' ' . $spec->unit : '' }}
-                                        </div>
-                                        <input
-                                            type="range"
-                                            wire:model.live="specification_filters.{{ $spec->code }}"
-                                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-custom-teal-600"
-                                            min="0"
-                                            max="{{ $spec->code === 'ram' ? '64' : ($spec->code === 'storage' ? '4096' : '100') }}"
-                                            step="{{ $spec->code === 'ram' ? '4' : ($spec->code === 'storage' ? '128' : '1') }}"
-                                        >
-                                    </div>
-
-                                @elseif($spec->data_type === 'boolean')
-                                    <!-- Boolean Filter -->
-                                    <div class="space-y-2">
-                                        <label class="flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                wire:model.live="specification_filters.{{ $spec->code }}"
-                                                value="1"
-                                                class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
-                                            >
-                                            <span class="ml-2 text-gray-700">Yes</span>
-                                        </label>
-                                    </div>
-                                @endif
-                            </div>
-                        @endforeach
-                    @endif
                 </div>
             </aside>
 
@@ -180,6 +116,7 @@
                             >
                                 <option value="latest">Newest First</option>
                                 <option value="price">Price: Low to High</option>
+                                <option value="price_desc">Price: High to Low</option>
                             </select>
                         </div>
                     </div>

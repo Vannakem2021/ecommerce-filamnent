@@ -1,0 +1,406 @@
+---
+globs: tests/**/*.php
+---
+
+# Testing Patterns and Conventions
+
+This Laravel project uses PHPUnit for testing. Follow these patterns for comprehensive test coverage.
+
+## Test Structure
+
+### Directory Organization
+```
+tests/
+├── Feature/           # Integration tests
+│   ├── CartManagementTest.php
+│   ├── ProductVariantTest.php
+│   └── CheckoutTest.php
+├── Unit/             # Unit tests
+│   ├── ModelTest.php
+│   └── ServiceTest.php
+└── TestCase.php      # Base test case
+```
+
+## Testing Patterns from Existing Tests
+
+### Cart Management Testing ([CartManagementTest.php](mdc:tests/Feature/CartManagementTest.php))
+```php
+class CartManagementTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_can_add_product_to_cart()
+    {
+        $product = Product::factory()->create([
+            'price_cents' => 110000,
+            'stock_quantity' => 10
+        ]);
+
+        $cartItems = CartManagement::addItemToCart($product->id);
+
+        $this->assertCount(1, $cartItems);
+        $this->assertEquals($product->id, $cartItems[0]['product_id']);
+        $this->assertEquals(1100, $cartItems[0]['unit_amount']);
+    }
+
+    public function test_can_add_variant_to_cart()
+    {
+        $product = Product::factory()->create(['has_variants' => true]);
+        
+        $variant = $product->createSimpleVariant([
+            'Color' => 'Black',
+            'Storage' => '64GB'
+        ], 120000); // $1200
+
+        $cartItems = CartManagement::addItemToCartWithVariant(
+            $product->id,
+            $variant->id,
+            1,
+            ['Color' => 'Black', 'Storage' => '64GB']
+        );
+
+        $this->assertCount(1, $cartItems);
+        $this->assertEquals($variant->id, $cartItems[0]['variant_id']);
+        $this->assertEquals(1200, $cartItems[0]['unit_amount']);
+    }
+}
+```
+
+### Livewire Component Testing
+```php
+class ProductDetailPageTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_can_select_variant_options()
+    {
+        $product = Product::factory()->withVariants()->create();
+
+        Livewire::test(ProductDetailPage::class, ['slug' => $product->slug])
+            ->call('selectOption', 'Color', 'Black')
+            ->assertSet('selectedOptions.Color', 'Black')
+            ->assertNotNull('selectedVariant');
+    }
+
+    public function test_shows_correct_pricing_for_variant()
+    {
+        $product = Product::factory()->create([
+            'has_variants' => true,
+            'price_cents' => 100000
+        ]);
+
+        $variant = $product->createSimpleVariant(
+            ['Color' => 'Gold'],
+            150000 // $1500 override
+        );
+
+        $component = Livewire::test(ProductDetailPage::class, ['slug' => $product->slug])
+            ->call('selectOption', 'Color', 'Gold');
+
+        $this->assertEquals(1500, $component->call('getCurrentPrice'));
+    }
+}
+```
+
+## Model Testing Patterns
+
+### Product Model Testing
+```php
+class ProductTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_can_create_variant_with_json_options()
+    {
+        $product = Product::factory()->create(['has_variants' => true]);
+
+        $variant = $product->createSimpleVariant([
+            'Color' => 'Blue',
+            'Storage' => '128GB'
+        ], 115000);
+
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $product->id,
+            'override_price' => 115000,
+        ]);
+
+        $this->assertEquals(['Color' => 'Blue', 'Storage' => '128GB'], $variant->options);
+    }
+
+    public function test_final_price_uses_override_when_set()
+    {
+        $product = Product::factory()->create(['price_cents' => 100000]);
+        
+        $variant = ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'override_price' => 120000
+        ]);
+
+        $this->assertEquals(120000, $variant->final_price);
+        $this->assertEquals(1200, $variant->final_price_in_dollars);
+    }
+
+    public function test_final_price_uses_product_base_when_no_override()
+    {
+        $product = Product::factory()->create(['price_cents' => 100000]);
+        
+        $variant = ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'override_price' => null
+        ]);
+
+        $this->assertEquals(100000, $variant->final_price);
+    }
+}
+```
+
+## Factory Patterns
+
+### Product Factory
+```php
+class ProductFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'category_id' => Category::factory(),
+            'brand_id' => Brand::factory(),
+            'name' => $this->faker->productName(),
+            'slug' => $this->faker->slug(),
+            'price_cents' => $this->faker->numberBetween(1000, 100000),
+            'stock_quantity' => $this->faker->numberBetween(0, 100),
+            'is_active' => true,
+        ];
+    }
+
+    public function withVariants(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'has_variants' => true,
+        ])->afterCreating(function (Product $product) {
+            ProductVariant::factory()
+                ->count(3)
+                ->for($product)
+                ->create();
+        });
+    }
+
+    public function outOfStock(): static
+    {
+        return $this->state(['stock_quantity' => 0]);
+    }
+}
+```
+
+### Variant Factory
+```php
+class ProductVariantFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'product_id' => Product::factory(),
+            'sku' => strtoupper($this->faker->unique()->lexify('VAR-???-###')),
+            'options' => [
+                'Color' => $this->faker->randomElement(['Black', 'White', 'Blue']),
+                'Storage' => $this->faker->randomElement(['64GB', '128GB', '256GB']),
+            ],
+            'stock_quantity' => $this->faker->numberBetween(0, 50),
+            'is_active' => true,
+        ];
+    }
+
+    public function withOverridePrice(): static
+    {
+        return $this->state([
+            'override_price' => $this->faker->numberBetween(50000, 200000),
+        ]);
+    }
+}
+```
+
+## Service Testing Patterns
+
+### Cart Validation Service
+```php
+class CartValidationServiceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_validates_cart_item_security()
+    {
+        $cartItem = [
+            'product_id' => 1,
+            'quantity' => 1,
+            'unit_amount' => 100.00,
+        ];
+
+        $sanitized = CartValidationService::sanitizeCartItem($cartItem);
+
+        $this->assertIsInt($sanitized['product_id']);
+        $this->assertIsInt($sanitized['quantity']);
+        $this->assertIsFloat($sanitized['unit_amount']);
+    }
+
+    public function test_prevents_price_manipulation()
+    {
+        $product = Product::factory()->create(['price_cents' => 100000]);
+        
+        $cartItems = [[
+            'product_id' => $product->id,
+            'unit_amount' => 1.00, // Manipulated price
+            'quantity' => 1,
+        ]];
+
+        $validation = CartValidationService::validateCart($cartItems);
+
+        $this->assertFalse($validation['valid']);
+        $this->assertContains('price_mismatch', $validation['errors']);
+    }
+}
+```
+
+## Integration Testing
+
+### Checkout Flow Testing
+```php
+class CheckoutTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_complete_checkout_flow()
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['price_cents' => 110000]);
+
+        // Add to cart
+        CartManagement::addItemToCart($product->id);
+
+        // Test checkout page
+        $this->actingAs($user)
+            ->get('/checkout')
+            ->assertStatus(200)
+            ->assertSee($product->name);
+
+        // Process order
+        $orderData = [
+            'shipping_address' => 'Test Address',
+            'payment_method' => 'stripe',
+        ];
+
+        $response = $this->actingAs($user)
+            ->post('/checkout', $orderData);
+
+        $this->assertDatabaseHas('orders', [
+            'user_id' => $user->id,
+            'total_amount' => 1100,
+        ]);
+    }
+}
+```
+
+## API Testing
+
+### Product API Testing
+```php
+class ProductApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_can_get_product_specifications()
+    {
+        $product = Product::factory()->create();
+
+        $response = $this->getJson("/api/products/{$product->id}/specifications");
+
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'product_id',
+                'specifications' => [
+                    '*' => [
+                        'attribute_name',
+                        'value',
+                        'display_order'
+                    ]
+                ]
+            ]);
+    }
+}
+```
+
+## Performance Testing
+
+### Database Query Testing
+```php
+class ProductPerformanceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_variant_queries_are_efficient()
+    {
+        $product = Product::factory()->withVariants()->create();
+
+        DB::enableQueryLog();
+
+        $product->getAvailableOptions();
+
+        $queries = DB::getQueryLog();
+        
+        // Should not exceed N+1 query limit
+        $this->assertLessThanOrEqual(3, count($queries));
+    }
+}
+```
+
+## Test Data Patterns
+
+### Seeder for Testing
+```php
+class TestDataSeeder extends Seeder
+{
+    public function run(): void
+    {
+        // Create test products with predictable data
+        $product = Product::create([
+            'name' => 'Test iPhone',
+            'price_cents' => 110000,
+            'has_variants' => true,
+        ]);
+
+        $product->createSimpleVariant(['Color' => 'Black'], null, 10);
+        $product->createSimpleVariant(['Color' => 'White'], 115000, 5);
+    }
+}
+```
+
+## Best Practices
+
+### Test Organization
+1. Use descriptive test names that explain the scenario
+2. Follow Arrange-Act-Assert pattern
+3. Use factories for creating test data
+4. Group related tests in the same class
+
+### Database Testing
+1. Use `RefreshDatabase` trait for clean state
+2. Test database constraints and relationships
+3. Verify both positive and negative scenarios
+4. Test data integrity and validation
+
+### Livewire Testing
+1. Test component state changes
+2. Verify event dispatching and listening
+3. Test user interactions and form submissions
+4. Assert on computed properties and validation
+
+### API Testing
+1. Test all HTTP methods and status codes
+2. Verify JSON structure and response format
+3. Test authentication and authorization
+4. Include error scenarios and edge cases
+
+### Performance Considerations
+1. Use database transactions for speed
+2. Test query efficiency and N+1 problems
+3. Mock external services and APIs
+4. Test with realistic data volumes

@@ -7,7 +7,6 @@ use App\Livewire\Partials\Navbar;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
-use App\Models\SpecificationAttribute;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -29,9 +28,6 @@ class ProductsPage extends Component
     public $selected_brands = [];
 
     #[Url]
-    public $featured = [];
-
-    #[Url]
     public $on_sale = [];
 
     #[Url]
@@ -39,9 +35,6 @@ class ProductsPage extends Component
 
     #[Url]
     public $sort = 'latest';
-
-    #[Url]
-    public $specification_filters = [];
 
     // Method for adding the product in the cart
     public function addToCart($product_id)
@@ -106,10 +99,8 @@ class ProductsPage extends Component
     {
         $this->selected_categories = [];
         $this->selected_brands = [];
-        $this->featured = [];
         $this->on_sale = [];
         $this->price_range = 0;
-        $this->specification_filters = [];
         $this->sort = 'latest';
 
         $this->alert('info', 'All filters have been reset!', [
@@ -138,15 +129,6 @@ class ProductsPage extends Component
 
         $categories = Category::where('is_active', 1)->get(['id', 'name', 'slug']);
 
-        // Get filterable specifications
-        $filterableSpecs = SpecificationAttribute::active()
-            ->filterable()
-            ->with(['options' => function ($query) {
-                $query->active()->ordered();
-            }])
-            ->ordered()
-            ->get();
-
 
         if(!empty($this->selected_categories))
         {
@@ -158,73 +140,12 @@ class ProductsPage extends Component
             $products->whereIn('brand_id', $this->selected_brands);
         }
 
-        if($this->featured){
-            $products->where('is_featured', 1);
-        }
-
         if($this->on_sale){
             $products->where('on_sale', 1);
         }
 
         if($this->price_range){
-            $products->whereBetween('price', [0, $this->price_range]);
-        }
-
-        // Apply specification filters
-        if (!empty($this->specification_filters)) {
-            foreach ($this->specification_filters as $specCode => $filterValue) {
-                if (empty($filterValue)) continue;
-
-                $spec = $filterableSpecs->where('code', $specCode)->first();
-                if (!$spec) continue;
-
-                if ($spec->scope === 'product') {
-                    // Filter by product-level specifications
-                    $products->whereHas('specificationsWithAttributes', function ($query) use ($spec, $filterValue) {
-                        $query->where('specification_attribute_id', $spec->id);
-
-                        if ($spec->data_type === 'number') {
-                            // Handle numeric range filters
-                            if (is_array($filterValue) && count($filterValue) === 2) {
-                                $query->whereBetween('value_number', $filterValue);
-                            } else {
-                                $query->where('value_number', '>=', $filterValue);
-                            }
-                        } elseif ($spec->data_type === 'enum') {
-                            // Handle enum filters
-                            if (is_array($filterValue)) {
-                                $query->whereIn('specification_attribute_option_id', $filterValue);
-                            } else {
-                                $query->where('specification_attribute_option_id', $filterValue);
-                            }
-                        } else {
-                            // Handle text filters
-                            $query->where('value_text', 'LIKE', "%{$filterValue}%");
-                        }
-                    });
-                } else {
-                    // Filter by variant-level specifications
-                    $products->whereHas('variants.specificationsWithAttributes', function ($query) use ($spec, $filterValue) {
-                        $query->where('specification_attribute_id', $spec->id);
-
-                        if ($spec->data_type === 'number') {
-                            if (is_array($filterValue) && count($filterValue) === 2) {
-                                $query->whereBetween('value_number', $filterValue);
-                            } else {
-                                $query->where('value_number', '>=', $filterValue);
-                            }
-                        } elseif ($spec->data_type === 'enum') {
-                            if (is_array($filterValue)) {
-                                $query->whereIn('specification_attribute_option_id', $filterValue);
-                            } else {
-                                $query->where('specification_attribute_option_id', $filterValue);
-                            }
-                        } else {
-                            $query->where('value_text', 'LIKE', "%{$filterValue}%");
-                        }
-                    });
-                }
-            }
+            $products->whereBetween('price_cents', [0, $this->price_range * 100]);
         }
 
         if($this->sort == 'latest'){
@@ -232,14 +153,17 @@ class ProductsPage extends Component
         }
 
         if($this->sort == 'price'){
-            $products->orderBy('price');
+            $products->orderBy('price_cents');
+        }
+
+        if($this->sort == 'price_desc'){
+            $products->orderBy('price_cents', 'desc');
         }
 
         return view('livewire.products-page', [
             'products' => $products->paginate(12),
             'brands' => $brands,
             'categories' => $categories,
-            'filterableSpecs' => $filterableSpecs
         ]);
     }
 }

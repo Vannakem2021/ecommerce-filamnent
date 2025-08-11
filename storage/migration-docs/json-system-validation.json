@@ -1,0 +1,47 @@
+{
+    "timestamp": "2025-08-10T16:43:17.198772Z",
+    "validation_summary": {
+        "total_issues": 5,
+        "total_warnings": 0,
+        "status": "issues_found"
+    },
+    "statistics": {
+        "products_total": 1,
+        "products_migrated": 0,
+        "variants_total": 360,
+        "variants_migrated": 0,
+        "products_with_config": 1,
+        "variants_with_options": 360,
+        "sample_product_loaded": true,
+        "sample_variant_count": 0,
+        "json_access_test": "passed"
+    },
+    "issues": [
+        {
+            "type": "legacy_tables_exist",
+            "message": "Legacy tables still exist: product_attributes, product_attribute_values, product_variant_attributes",
+            "tables": [
+                "product_attributes",
+                "product_attribute_values",
+                "product_variant_attributes"
+            ]
+        },
+        {
+            "type": "missing_column",
+            "message": "Missing variant_config column in products table"
+        },
+        {
+            "type": "incomplete_migration",
+            "message": "Not all products migrated: 0\/1"
+        },
+        {
+            "type": "incomplete_migration",
+            "message": "Not all variants migrated: 0\/360"
+        },
+        {
+            "type": "invalid_json",
+            "message": "Found 1 products with invalid JSON config"
+        }
+    ],
+    "warnings": []
+}

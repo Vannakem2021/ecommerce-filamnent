@@ -1,0 +1,135 @@
+---
+description: Product variant system implementation patterns
+---
+
+# Product Variant System Guide
+
+This project uses a **simplified JSON-based variant system** for managing product variations (color, size, storage, etc.).
+
+## Current System Overview
+
+### Database Schema (Simplified)
+```sql
+-- Products table (base information)
+products: id, name, price_cents, has_variants, sku, stock_quantity, attributes (JSON)
+
+-- Product variants table (SKU-based inventory)  
+product_variants: id, product_id, sku, options (JSON), override_price, stock_quantity, image_url
+```
+
+### Key Files
+- **[Product.php](mdc:app/Models/Product.php)** - Main product model with variant methods
+- **[ProductVariant.php](mdc:app/Models/ProductVariant.php)** - Variant model with simplified pricing
+- **[ProductDetailPage.php](mdc:app/Livewire/ProductDetailPage.php)** - Frontend variant selection
+- **[CartManagement.php](mdc:app/Helpers/CartManagement.php)** - Cart operations with variant support
+
+## Implementation Patterns
+
+### Creating Products with Variants
+
+```php
+// Create base product
+$product = Product::create([
+    'name' => 'iPhone 15',
+    'price_cents' => 110000, // $1100 base price
+    'has_variants' => true,
+    'attributes' => ['Brand' => 'Apple', 'Screen Size' => '6.1 inch'] // Optional JSON
+]);
+
+// Create variants with JSON options
+$variant1 = $product->createSimpleVariant(
+    options: ['Color' => 'Black', 'Storage' => '64GB'],
+    overridePrice: null, // Uses base price
+    stockQuantity: 15
+);
+
+$variant2 = $product->createSimpleVariant(
+    options: ['Color' => 'Black', 'Storage' => '256GB'], 
+    overridePrice: 120000, // $1200 override
+    stockQuantity: 10
+);
+```
+
+### Pricing Logic (Simplified)
+```php
+// ProductVariant model - final price calculation
+public function getFinalPriceAttribute(): int
+{
+    return $this->override_price ?? $this->product->price_cents;
+}
+
+// Usage in frontend
+$finalPrice = $variant->final_price_in_dollars; // Uses accessor
+```
+
+### Frontend Variant Selection
+```php
+// ProductDetailPage.php - selecting options
+public function selectOption($optionName, $optionValue)
+{
+    $this->selectedOptions[$optionName] = $optionValue;
+    $this->findMatchingVariant();
+    $this->calculateDynamicPrice();
+}
+
+// Find variant by JSON options
+private function findMatchingVariant()
+{
+    $this->selectedVariant = $this->product->findVariantByOptions($this->selectedOptions);
+}
+```
+
+### Cart Integration
+```php
+// Add variant to cart with JSON options
+CartManagement::addItemToCartWithVariant(
+    product_id: $product->id,
+    variant_id: $variant->id,
+    quantity: 2,
+    variant_options: ['Color' => 'Black', 'Storage' => '256GB']
+);
+```
+
+## Migration Notes
+
+### Legacy System (Being Removed)
+- Complex normalized tables: `product_attributes`, `product_attribute_values`, `product_variant_attributes`
+- Complex price calculation with attribute modifiers
+- Junction tables for variant-attribute relationships
+
+### Current Simplified System
+- JSON options field on variants: `{"Color": "Black", "Storage": "256GB"}`
+- Simple override pricing: `override_price` field (null = use base price)
+- SKU-based inventory tracking per variant
+
+## Best Practices
+
+### Variant Creation
+1. Always use `createSimpleVariant()` method for new variants
+2. Set `override_price` only when different from base price
+3. Include comprehensive `options` JSON for all selectable attributes
+4. Ensure unique SKU generation per variant
+
+### Frontend Implementation
+1. Use `getAvailableOptions()` to populate selection dropdowns
+2. Implement `isOptionCompatibleWithSelections()` for valid combinations
+3. Always validate variant selection before cart operations
+4. Handle missing options gracefully with error messages
+
+### Admin Panel (Filament)
+1. Use KeyValue component for JSON options editing
+2. Implement price override fields with proper validation
+3. Show final price calculations in variant tables
+4. Provide bulk operations for variant management
+
+### Inventory Management
+1. Track stock at variant level, not attribute level
+2. Use simplified `reduceStockSimple()` methods
+3. Implement proper validation before stock changes
+4. Consider reserved inventory for pending orders
+
+## Performance Considerations
+- Index JSON columns for faster variant lookups
+- Cache available options for popular products
+- Use eager loading for variant relationships
+- Implement proper pagination for large variant sets

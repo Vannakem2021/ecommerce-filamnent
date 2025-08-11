@@ -1,0 +1,458 @@
+---
+globs: database/migrations/*.php,database/seeders/*.php,database/factories/*.php
+---
+
+# Database Patterns and Conventions
+
+This Laravel ecommerce project follows specific database patterns for optimal performance and maintainability.
+
+## Migration Patterns
+
+### Table Creation Standards
+```php
+// Create table migration example
+Schema::create('products', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('category_id')->constrained()->cascadeOnDelete();
+    $table->foreignId('brand_id')->constrained()->cascadeOnDelete();
+    
+    // Core fields
+    $table->string('name');
+    $table->string('slug')->unique();
+    $table->text('description')->nullable();
+    
+    // Pricing in cents (avoid floating point issues)
+    $table->integer('price_cents')->unsigned();
+    $table->integer('compare_price_cents')->unsigned()->nullable();
+    $table->integer('cost_price_cents')->unsigned()->nullable();
+    
+    // Inventory
+    $table->integer('stock_quantity')->default(0);
+    $table->enum('stock_status', ['in_stock', 'out_of_stock', 'back_order'])->default('in_stock');
+    $table->integer('low_stock_threshold')->default(5);
+    $table->boolean('track_inventory')->default(true);
+    
+    // Variant system (JSON-based)
+    $table->boolean('has_variants')->default(false);
+    $table->json('attributes')->nullable()->comment('Product-level attributes');
+    $table->json('variant_config')->nullable()->comment('Variant configuration metadata');
+    
+    // Status flags
+    $table->boolean('is_active')->default(true);
+    $table->boolean('is_featured')->default(false);
+    $table->boolean('in_stock')->default(true);
+    $table->boolean('on_sale')->default(false);
+    
+    // SEO
+    $table->string('meta_title')->nullable();
+    $table->text('meta_description')->nullable();
+    $table->string('meta_keywords')->nullable();
+    
+    $table->timestamps();
+    
+    // Indexes for performance
+    $table->index(['is_active', 'is_featured']);
+    $table->index(['category_id', 'is_active']);
+    $table->index('stock_status');
+});
+```
+
+### JSON Column Indexing
+```php
+// Add JSON indexes for variant queries
+Schema::table('product_variants', function (Blueprint $table) {
+    // PostgreSQL
+    $table->index('options', 'product_variants_options_gin_idx', 'gin');
+    
+    // MySQL 8.0+
+    // $table->index([DB::raw('(JSON_EXTRACT(options, "$.Color"))')]);
+});
+```
+
+### Foreign Key Constraints
+```php
+Schema::table('product_variants', function (Blueprint $table) {
+    $table->foreignId('product_id')
+        ->constrained('products')
+        ->cascadeOnDelete(); // Delete variants when product is deleted
+        
+    // Soft constraints for better performance in some cases
+    $table->unsignedBigInteger('category_id')->nullable();
+    $table->index('category_id'); // Manual index without constraint
+});
+```
+
+## Model Relationship Patterns
+
+### Eloquent Relationships
+```php
+class Product extends Model
+{
+    // One-to-many relationships
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+    
+    public function activeVariants()
+    {
+        return $this->hasMany(ProductVariant::class)
+            ->where('is_active', true)
+            ->orderBy('is_default', 'desc');
+    }
+    
+    // Belongs-to relationships
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
+    
+    public function brand()
+    {
+        return $this->belongsTo(Brand::class);
+    }
+    
+    // Has-many-through relationships
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+    
+    // Conditional relationships
+    public function defaultVariant()
+    {
+        return $this->hasOne(ProductVariant::class)
+            ->where('is_default', true);
+    }
+}
+```
+
+### JSON Relationship Patterns
+```php
+class ProductVariant extends Model
+{
+    protected $casts = [
+        'options' => 'array',
+    ];
+    
+    // Query JSON fields efficiently
+    public function scopeByOption($query, $optionName, $optionValue)
+    {
+        return $query->whereJsonContains('options->' . $optionName, $optionValue);
+    }
+    
+    // Get specific JSON values
+    public function getColorAttribute()
+    {
+        return $this->options['Color'] ?? null;
+    }
+}
+```
+
+## Query Optimization Patterns
+
+### Eager Loading
+```php
+// ✅ GOOD: Eager load relationships
+$products = Product::with([
+    'category',
+    'brand',
+    'variants' => function ($query) {
+        $query->where('is_active', true);
+    }
+])->get();
+
+// ✅ GOOD: Conditional eager loading
+$products = Product::with(['variants' => function ($query) {
+    $query->when(request('show_inactive'), function ($q) {
+        return $q->withoutGlobalScope('active');
+    });
+}])->get();
+```
+
+### Efficient JSON Queries
+```php
+// ✅ GOOD: JSON queries with indexes
+$blackVariants = ProductVariant::whereJsonContains('options->Color', 'Black')
+    ->where('is_active', true)
+    ->get();
+
+// ✅ GOOD: Multiple JSON conditions
+$variants = ProductVariant::where('product_id', $productId)
+    ->whereJsonContains('options->Color', $color)
+    ->whereJsonContains('options->Storage', $storage)
+    ->first();
+```
+
+### Pagination Patterns
+```php
+// Use cursor pagination for large datasets
+$products = Product::where('is_active', true)
+    ->orderBy('created_at', 'desc')
+    ->cursorPaginate(20);
+
+// Use simple pagination when count not needed
+$products = Product::where('category_id', $categoryId)
+    ->simplePaginate(20);
+```
+
+## Factory Patterns
+
+### Product Factory
+```php
+class ProductFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'category_id' => Category::factory(),
+            'brand_id' => Brand::factory(),
+            'name' => $this->faker->words(3, true),
+            'slug' => fn(array $attributes) => Str::slug($attributes['name']),
+            'description' => $this->faker->paragraphs(3, true),
+            'price_cents' => $this->faker->numberBetween(1000, 100000), // $10 - $1000
+            'stock_quantity' => $this->faker->numberBetween(0, 100),
+            'is_active' => true,
+            'images' => [
+                'products/sample-1.jpg',
+                'products/sample-2.jpg',
+            ],
+        ];
+    }
+
+    public function withVariants(): static
+    {
+        return $this->state([
+            'has_variants' => true,
+        ])->afterCreating(function (Product $product) {
+            // Create 3-5 variants with different options
+            $colors = ['Black', 'White', 'Blue', 'Red'];
+            $storage = ['64GB', '128GB', '256GB'];
+            
+            foreach (array_slice($colors, 0, 3) as $color) {
+                ProductVariant::factory()->create([
+                    'product_id' => $product->id,
+                    'options' => [
+                        'Color' => $color,
+                        'Storage' => $this->faker->randomElement($storage),
+                    ],
+                ]);
+            }
+        });
+    }
+
+    public function expensive(): static
+    {
+        return $this->state(['price_cents' => $this->faker->numberBetween(100000, 500000)]);
+    }
+}
+```
+
+### Variant Factory
+```php
+class ProductVariantFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'product_id' => Product::factory(),
+            'sku' => strtoupper($this->faker->unique()->bothify('VAR-???-###')),
+            'options' => [
+                'Color' => $this->faker->randomElement(['Black', 'White', 'Blue']),
+                'Storage' => $this->faker->randomElement(['64GB', '128GB', '256GB']),
+            ],
+            'stock_quantity' => $this->faker->numberBetween(0, 50),
+            'is_active' => true,
+            'is_default' => false,
+        ];
+    }
+
+    public function withOverride(): static
+    {
+        return $this->state([
+            'override_price' => $this->faker->numberBetween(50000, 200000),
+        ]);
+    }
+
+    public function asDefault(): static
+    {
+        return $this->state(['is_default' => true]);
+    }
+}
+```
+
+## Seeder Patterns
+
+### Production-Ready Seeders
+```php
+class EcommerceSeeder extends Seeder
+{
+    public function run(): void
+    {
+        DB::transaction(function () {
+            // Create categories hierarchy
+            $electronics = Category::create([
+                'name' => 'Electronics',
+                'slug' => 'electronics',
+                'is_active' => true,
+            ]);
+            
+            $smartphones = Category::create([
+                'name' => 'Smartphones',
+                'slug' => 'smartphones',
+                'parent_id' => $electronics->id,
+                'is_active' => true,
+            ]);
+            
+            // Create brands
+            $apple = Brand::create([
+                'name' => 'Apple',
+                'slug' => 'apple',
+                'is_active' => true,
+            ]);
+            
+            // Create products with variants
+            $iphone = Product::create([
+                'category_id' => $smartphones->id,
+                'brand_id' => $apple->id,
+                'name' => 'iPhone 15',
+                'slug' => 'iphone-15',
+                'price_cents' => 110000, // $1100
+                'has_variants' => true,
+                'attributes' => [
+                    'Brand' => 'Apple',
+                    'Screen Size' => '6.1 inch',
+                    'Operating System' => 'iOS',
+                ],
+            ]);
+            
+            // Create variants
+            $variants = [
+                ['Color' => 'Black', 'Storage' => '64GB', 'override' => null],
+                ['Color' => 'Black', 'Storage' => '256GB', 'override' => 120000],
+                ['Color' => 'Blue', 'Storage' => '64GB', 'override' => null],
+                ['Color' => 'Blue', 'Storage' => '256GB', 'override' => 120000],
+            ];
+            
+            foreach ($variants as $index => $variantData) {
+                $iphone->createSimpleVariant(
+                    ['Color' => $variantData['Color'], 'Storage' => $variantData['Storage']],
+                    $variantData['override'],
+                    rand(5, 25)
+                );
+            }
+        });
+    }
+}
+```
+
+## Performance Optimization
+
+### Database Indexes
+```php
+// Migration for performance indexes
+Schema::table('products', function (Blueprint $table) {
+    // Composite indexes for common queries
+    $table->index(['category_id', 'is_active', 'created_at']);
+    $table->index(['brand_id', 'is_active']);
+    $table->index(['is_featured', 'is_active']);
+    
+    // Partial indexes (PostgreSQL)
+    if (DB::getDriverName() === 'pgsql') {
+        DB::statement('CREATE INDEX products_active_featured_idx ON products (created_at DESC) WHERE is_active = true AND is_featured = true');
+    }
+});
+```
+
+### Query Optimization
+```php
+// ✅ GOOD: Efficient product search
+public function search($term, $categoryId = null)
+{
+    return Product::select(['id', 'name', 'slug', 'price_cents', 'images'])
+        ->where('is_active', true)
+        ->when($categoryId, fn($q) => $q->where('category_id', $categoryId))
+        ->where(function ($query) use ($term) {
+            $query->where('name', 'LIKE', "%{$term}%")
+                  ->orWhere('description', 'LIKE', "%{$term}%");
+        })
+        ->with(['category:id,name', 'brand:id,name'])
+        ->orderBy('is_featured', 'desc')
+        ->orderBy('created_at', 'desc')
+        ->paginate(20);
+}
+```
+
+### Connection Pool Configuration
+```php
+// config/database.php
+'mysql' => [
+    'driver' => 'mysql',
+    // Connection pooling settings
+    'options' => [
+        PDO::ATTR_PERSISTENT => true,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ],
+    // Connection limits
+    'pool' => [
+        'min_connections' => 1,
+        'max_connections' => 10,
+    ],
+],
+```
+
+## Data Integrity Patterns
+
+### Constraints and Validation
+```php
+// Model-level validation
+class Product extends Model
+{
+    protected static function booted()
+    {
+        static::saving(function ($product) {
+            // Ensure pricing consistency
+            if ($product->compare_price_cents && $product->compare_price_cents <= $product->price_cents) {
+                throw new InvalidArgumentException('Compare price must be higher than selling price');
+            }
+            
+            // Auto-generate slug if empty
+            if (empty($product->slug)) {
+                $product->slug = Str::slug($product->name);
+            }
+        });
+    }
+}
+```
+
+### Database Constraints
+```php
+// Add check constraints (PostgreSQL)
+DB::statement('ALTER TABLE products ADD CONSTRAINT price_positive CHECK (price_cents > 0)');
+DB::statement('ALTER TABLE products ADD CONSTRAINT stock_non_negative CHECK (stock_quantity >= 0)');
+
+// Add unique constraints
+Schema::table('products', function (Blueprint $table) {
+    $table->unique(['brand_id', 'name']); // Unique product name per brand
+});
+```
+
+## Best Practices
+
+### Migration Organization
+1. Use descriptive migration names with timestamps
+2. Always include rollback methods (`down()`)
+3. Use transactions for complex migrations
+4. Test migrations on production-like data
+
+### Query Performance
+1. Always use indexes for foreign keys
+2. Index JSON columns used in WHERE clauses
+3. Use appropriate data types (avoid TEXT for short strings)
+4. Consider partitioning for very large tables
+
+### Data Consistency
+1. Use database transactions for related operations
+2. Implement proper foreign key constraints
+3. Use enum types for status fields
+4. Store monetary values in cents (integers)

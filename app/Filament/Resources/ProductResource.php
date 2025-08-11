@@ -322,37 +322,64 @@ class ProductResource extends Resource
             ])
             ->filters([
                 SelectFilter::make('category')
-                    ->relationship('category', 'name'),
+                    ->relationship('category', 'name')
+                    ->searchable()
+                    ->preload(),
 
                 SelectFilter::make('brand')
-                    ->relationship('brand', 'name'),
+                    ->relationship('brand', 'name')
+                    ->searchable()
+                    ->preload(),
 
-                Filter::make('is_featured')
-                    ->toggle(),
-
-                Filter::make('in_stock')
-                    ->toggle(),
-
-                Filter::make('on_sale')
-                    ->toggle(),
-
-                Filter::make('is_active')
-                    ->toggle(),
+                Filter::make('price_range')
+                    ->form([
+                        Forms\Components\Grid::make(2)
+                            ->schema([
+                                Forms\Components\TextInput::make('price_from')
+                                    ->label('Min Price (₹)')
+                                    ->numeric()
+                                    ->placeholder('0'),
+                                Forms\Components\TextInput::make('price_to')
+                                    ->label('Max Price (₹)')
+                                    ->numeric()
+                                    ->placeholder('10000'),
+                            ])
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['price_from'],
+                                fn (Builder $query, $price): Builder => $query->where('price_cents', '>=', $price * 100),
+                            )
+                            ->when(
+                                $data['price_to'],
+                                fn (Builder $query, $price): Builder => $query->where('price_cents', '<=', $price * 100),
+                            );
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        if ($data['price_from'] ?? null) {
+                            $indicators['price_from'] = 'Min: ₹' . number_format($data['price_from']);
+                        }
+                        if ($data['price_to'] ?? null) {
+                            $indicators['price_to'] = 'Max: ₹' . number_format($data['price_to']);
+                        }
+                        return $indicators;
+                    }),
 
                 SelectFilter::make('stock_status')
+                    ->label('Stock Status')
                     ->options([
                         'in_stock' => 'In Stock',
                         'out_of_stock' => 'Out of Stock',
                         'back_order' => 'Back Order',
-                    ]),
+                    ])
+                    ->default('in_stock'),
 
-                Filter::make('low_stock')
-                    ->label('Low Stock')
-                    ->query(fn (Builder $query): Builder => $query->whereRaw('stock_quantity <= low_stock_threshold'))
+                Filter::make('is_active')
+                    ->label('Active Only')
+                    ->default()
                     ->toggle(),
-
-                Filter::make('track_inventory')
-                    ->toggle()
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([

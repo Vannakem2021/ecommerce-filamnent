@@ -1,0 +1,64 @@
+---
+alwaysApply: true
+---
+
+# Laravel Ecommerce Project Structure Guide
+
+This is a Laravel 11 ecommerce project using Filament 3.x admin panel, Livewire 3.x components, and Spatie Laravel Permission for RBAC.
+
+## Core Structure
+
+### Application Entry Points
+- **Frontend**: [routes/web.php](mdc:routes/web.php) - Public-facing ecommerce routes
+- **Admin Panel**: Filament-based admin at `/admin` - Product, order, and user management
+- **API**: [routes/api.php](mdc:routes/api.php) - API endpoints for mobile/integrations
+
+### Key Models
+- **[Product.php](mdc:app/Models/Product.php)** - Core product model with JSON-based variant system
+- **[ProductVariant.php](mdc:app/Models/ProductVariant.php)** - Product variants with simplified pricing
+- **[Order.php](mdc:app/Models/Order.php)** - Order management
+- **[User.php](mdc:app/Models/User.php)** - User accounts with role-based permissions
+
+### Frontend Components (Livewire)
+- **[ProductDetailPage.php](mdc:app/Livewire/ProductDetailPage.php)** - Product detail with variant selection
+- **[CartPage.php](mdc:app/Livewire/CartPage.php)** - Shopping cart management
+- **[CheckoutPage.php](mdc:app/Livewire/CheckoutPage.php)** - Checkout process
+
+### Admin Panel (Filament)
+- **[ProductResource.php](mdc:app/Filament/Resources/ProductResource.php)** - Product management
+- **[OrderResource.php](mdc:app/Filament/Resources/OrderResource.php)** - Order management
+- **[UserResource.php](mdc:app/Filament/Resources/UserResource.php)** - User management
+
+### Business Logic
+- **[CartManagement.php](mdc:app/Helpers/CartManagement.php)** - Cart operations with inventory validation
+- **[OrderService.php](mdc:app/Services/OrderService.php)** - Order processing logic
+- **[CartValidationService.php](mdc:app/Services/CartValidationService.php)** - Cart security and validation
+
+## Development Patterns
+
+### Model Conventions
+- Use price_cents for internal storage, price accessors for display
+- Implement simplified JSON-based variant system over complex normalized approach
+- Include comprehensive relationships and scopes
+- Add business logic methods for inventory, pricing, and validation
+
+### Livewire Component Patterns
+- Use public properties for component state
+- Implement proper validation and error handling
+- Emit events for frontend JavaScript integration
+- Follow naming convention: `ComponentNamePage.php`
+
+### Filament Resource Patterns
+- Use sections and groups for organized forms
+- Implement proper authorization with `can*()` methods
+- Use relation managers for complex relationships
+- Follow consistent table column and filter patterns
+
+### Security Considerations
+- Always validate cart items server-side via [CartValidationService.php](mdc:app/Services/CartValidationService.php)
+- Use rate limiting for cart operations
+- Sanitize user inputs and validate permissions
+- Implement proper CSRF protection for all forms
+
+## Migration Status
+The project is currently migrating from a complex normalized variant system to a simplified JSON-based approach. See [variant-migrate.md](mdc:variant-migrate.md) for migration details.
