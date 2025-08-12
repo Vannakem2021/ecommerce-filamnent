@@ -3,10 +3,12 @@
 namespace App\Livewire;
 
 use App\Helpers\CartManagement;
-use App\Models\Product;
+use App\Models\Address;
 use App\Services\CartValidationService;
 use App\Services\OrderService;
+use App\Services\PayWayService;
 use Exception;
+use Illuminate\Support\Facades\Log;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -27,21 +29,37 @@ class CheckoutPage extends Component
     public $newsletter_signup = true;
 
     // Shipping Address
-    public $selected_address = 'existing_1';
+    public $selected_address = 'new';
     public $show_new_address_form = false;
-    public $first_name = '';
-    public $last_name = '';
-    public $address_phone = '';
-    public $street_address = '';
-    public $city = '';
+    public $user_addresses = [];
+
+    // Cambodia Address Fields
+    public $contact_name = '';
+    public $phone_number = '';
+    public $house_number = '';
+    public $street_number = '';
+    public $city_province = '';
+    public $district_khan = '';
+    public $commune_sangkat = '';
     public $postal_code = '';
+    public $additional_info = '';
+    public $is_default = false;
 
     // Shipping Method
     public $shipping_method = 'standard';
     public $shipping_cost = 0;
 
     // Payment Method
-    public $payment_method = 'card';
+    public $payment_method = 'aba_pay';
+    public $available_payment_methods = [];
+
+    // ABA Pay specific fields
+    public $customer_firstname = '';
+    public $customer_lastname = '';
+    public $customer_email = '';
+    public $customer_phone = '';
+
+    // Legacy card fields (for backward compatibility)
     public $card_number = '';
     public $expiry_date = '';
     public $cvv = '';
@@ -62,13 +80,28 @@ class CheckoutPage extends Component
     {
         // Use validated cart items for checkout
         $this->cart_items = CartManagement::getValidatedCartItems();
+
+        // Redirect if cart is empty
+        if (empty($this->cart_items)) {
+            return redirect()->route('cart-products')->with('error', 'Your cart is empty. Please add some items before checkout.');
+        }
+
         $this->calculateTotals();
+
+        // Load available payment methods
+        $this->loadPaymentMethods();
 
         // Pre-fill user data if authenticated
         if (auth()->check()) {
             $user = auth()->user();
             $this->email = $user->email;
-            $this->first_name = $user->name;
+            $this->contact_name = $user->name;
+            $this->customer_email = $user->email;
+            $this->customer_firstname = explode(' ', $user->name)[0] ?? '';
+            $this->customer_lastname = implode(' ', array_slice(explode(' ', $user->name), 1)) ?: '';
+
+            // Load user addresses
+            $this->loadUserAddresses();
         }
     }
 
@@ -79,26 +112,110 @@ class CheckoutPage extends Component
         $this->grand_total = $this->subtotal + $this->shipping_cost + $this->tax_amount - $this->discount_amount;
     }
 
+    public function loadPaymentMethods()
+    {
+        // Simple payment methods - just ABA Pay and Cash on Delivery
+        $this->available_payment_methods = [
+            [
+                'code' => 'aba_pay',
+                'name' => 'ABA Pay',
+                'description' => 'Pay securely with ABA Pay',
+                'icon' => 'fas fa-credit-card',
+                'provider' => 'payway'
+            ],
+            [
+                'code' => 'cod',
+                'name' => 'Cash on Delivery',
+                'description' => 'Pay when your order is delivered',
+                'icon' => 'fas fa-money-bill-wave',
+                'provider' => 'manual'
+            ]
+        ];
+
+        // Set default payment method
+        $this->payment_method = 'aba_pay';
+    }
+
+    public function loadUserAddresses()
+    {
+        if (auth()->check()) {
+            $this->user_addresses = Address::where('user_id', auth()->id())
+                ->where('type', 'shipping')
+                ->orderBy('is_default', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->toArray();
+        }
+    }
+
     public function toggleNewAddressForm()
     {
         $this->show_new_address_form = !$this->show_new_address_form;
+        if ($this->show_new_address_form) {
+            $this->selected_address = 'new';
+        }
+    }
+
+    public function selectAddress($addressId)
+    {
+        $this->selected_address = $addressId;
+        $this->show_new_address_form = false;
+
+        if ($addressId !== 'new') {
+            $address = collect($this->user_addresses)->firstWhere('id', $addressId);
+            if ($address) {
+                $this->contact_name = $address['contact_name'];
+                $this->phone_number = $address['phone_number'];
+                $this->house_number = $address['house_number'];
+                $this->street_number = $address['street_number'];
+                $this->city_province = $address['city_province'];
+                $this->district_khan = $address['district_khan'];
+                $this->commune_sangkat = $address['commune_sangkat'];
+                $this->postal_code = $address['postal_code'];
+                $this->additional_info = $address['additional_info'];
+            }
+        }
     }
 
     public function saveNewAddress()
     {
         $this->validate([
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'address_phone' => 'required|string|max:20',
-            'street_address' => 'required|string|max:255',
-            'city' => 'required|string|max:255',
+            'contact_name' => 'required|string|max:255',
+            'phone_number' => 'required|string|max:20',
+            'house_number' => 'nullable|string|max:100',
+            'street_number' => 'nullable|string|max:100',
+            'city_province' => 'required|string|max:255',
+            'district_khan' => 'required|string|max:255',
+            'commune_sangkat' => 'required|string|max:255',
             'postal_code' => 'required|string|max:10',
+            'additional_info' => 'nullable|string|max:500',
         ]);
 
-        // In a real application, you would save this to the database
-        $this->alert('success', 'Address saved successfully!');
-        $this->show_new_address_form = false;
-        $this->selected_address = 'new';
+        if (auth()->check()) {
+            $address = Address::create([
+                'user_id' => auth()->id(),
+                'type' => 'shipping',
+                'contact_name' => $this->contact_name,
+                'phone_number' => $this->phone_number,
+                'house_number' => $this->house_number,
+                'street_number' => $this->street_number,
+                'city_province' => $this->city_province,
+                'district_khan' => $this->district_khan,
+                'commune_sangkat' => $this->commune_sangkat,
+                'postal_code' => $this->postal_code,
+                'additional_info' => $this->additional_info,
+                'is_default' => $this->is_default,
+            ]);
+
+            if ($this->is_default) {
+                $address->setAsDefault();
+            }
+
+            $this->loadUserAddresses();
+            $this->selected_address = $address->id;
+            $this->show_new_address_form = false;
+            $this->alert('success', 'Address saved successfully!');
+        }
     }
 
     public function updatedShippingMethod()
@@ -135,6 +252,19 @@ class CheckoutPage extends Component
     public function placeOrder()
     {
         try {
+            // Validate cart items first
+            $validatedCartItems = CartManagement::getValidatedCartItems();
+            if (empty($validatedCartItems)) {
+                $this->alert('error', 'Your cart is empty!');
+                return redirect()->route('cart-products');
+            }
+
+            // Double-check grand total
+            if ($this->grand_total <= 0) {
+                $this->alert('error', 'Invalid order total!');
+                return redirect()->route('cart-products');
+            }
+
             // Check permissions and rate limiting
             if (!CartValidationService::validateCartPermissions('place_order', auth()->id())) {
                 $this->alert('error', 'Too many order attempts. Please try again later.');
@@ -144,15 +274,22 @@ class CheckoutPage extends Component
             // Validate all required fields
             $this->validate([
                 'email' => 'required|email',
-                'phone' => 'required|string|max:20',
-                'first_name' => 'required|string|max:255',
-                'last_name' => 'required|string|max:255',
-                'street_address' => 'required|string|max:500',
-                'city' => 'required|string|max:255',
-                'postal_code' => 'required|string|max:20',
+                'contact_name' => 'required|string|max:255',
+                'phone_number' => 'required|string|max:20',
+                'city_province' => 'required|string|max:255',
+                'district_khan' => 'required|string|max:255',
+                'commune_sangkat' => 'required|string|max:255',
+                'postal_code' => 'required|string|max:10',
             ]);
 
-            if ($this->payment_method === 'card') {
+            // Validate payment method specific fields
+            if ($this->payment_method === 'aba_pay') {
+                $this->validate([
+                    'customer_email' => 'required|email',
+                    'customer_firstname' => 'required|string|max:255',
+                    'customer_lastname' => 'required|string|max:255',
+                ]);
+            } elseif ($this->payment_method === 'card') {
                 $this->validate([
                     'card_number' => 'required|string|min:16',
                     'expiry_date' => 'required|string|min:5',
@@ -190,18 +327,35 @@ class CheckoutPage extends Component
 
             // Prepare shipping address
             $shippingAddress = [
-                'first_name' => $this->first_name,
-                'last_name' => $this->last_name,
-                'phone' => $this->phone,
-                'street_address' => $this->street_address,
-                'city' => $this->city,
-                'state' => null, // Add state field if needed
-                'zip_code' => $this->postal_code,
+                'contact_name' => $this->contact_name,
+                'phone_number' => $this->phone_number,
+                'house_number' => $this->house_number,
+                'street_number' => $this->street_number,
+                'city_province' => $this->city_province,
+                'district_khan' => $this->district_khan,
+                'commune_sangkat' => $this->commune_sangkat,
+                'postal_code' => $this->postal_code,
+                'additional_info' => $this->additional_info,
             ];
 
             // Create order using OrderService with validated cart items
             $orderService = new OrderService();
             $order = $orderService->createOrderFromCart($validatedCartItems, $orderData, $shippingAddress);
+
+            // Process payment based on selected method
+            $paymentResult = $this->processPayment($order);
+
+            if (!$paymentResult['success']) {
+                $this->alert('error', $paymentResult['error'] ?? 'Payment processing failed');
+                return;
+            }
+
+            // Handle different payment results
+            if (isset($paymentResult['redirect_url'])) {
+                // For ABA Pay, redirect to payment gateway
+                $this->redirect($paymentResult['redirect_url']);
+                return;
+            }
 
             // Update cart count in navbar
             $this->dispatch('update-cart-count', total_count: 0)->to(\App\Livewire\Partials\Navbar::class);
@@ -216,7 +370,7 @@ class CheckoutPage extends Component
 
         } catch (Exception $e) {
             // Log the error for debugging
-            \Log::error('Order creation failed: ' . $e->getMessage(), [
+            Log::error('Order creation failed: ' . $e->getMessage(), [
                 'user_id' => auth()->id(),
                 'cart_items' => $this->cart_items,
                 'error' => $e->getMessage(),
@@ -229,6 +383,135 @@ class CheckoutPage extends Component
                 'toast' => true,
             ]);
         }
+    }
+
+    protected function processPayment($order)
+    {
+        try {
+            Log::info('Processing payment', [
+                'order_id' => $order->id,
+                'payment_method' => $this->payment_method,
+                'amount' => $order->grand_total
+            ]);
+
+            if ($this->payment_method === 'aba_pay') {
+                // Use PayWayService directly
+                $payWayService = new PayWayService();
+
+                // Prepare payment data for PayWay
+                $paymentData = [
+                    'transaction_id' => 'ORD-' . $order->id . '-' . time(),
+                    'amount' => $order->grand_total,
+                    'currency' => $order->currency ?? 'USD',
+                    'firstname' => $this->customer_firstname ?? '',
+                    'lastname' => $this->customer_lastname ?? '',
+                    'email' => $this->customer_email ?? $this->email,
+                    'phone' => $this->customer_phone ?? $this->phone_number,
+                    'return_url' => route('payment.aba-pay.return'),
+                    'cancel_url' => route('payment.aba-pay.cancel'),
+                    'items' => $this->prepareOrderItems($order),
+                    'shipping' => 0.00,
+                    'type' => 'purchase',
+                    'payment_option' => '', // Let user choose
+                    'view_type' => 'checkout', // Use 'checkout' for redirect flow
+                ];
+
+                // Create ABA Pay transaction record
+                $abaTransaction = \App\Models\AbaPayTransaction::create([
+                    'order_id' => $order->id,
+                    'transaction_id' => $paymentData['transaction_id'],
+                    'merchant_id' => config('payway.merchant_id'),
+                    'amount' => $order->grand_total,
+                    'currency' => $order->currency ?? 'USD',
+                    'status' => \App\Models\AbaPayTransaction::STATUS_PENDING,
+                    'payment_option' => '',
+                    'payment_gate' => 'payway',
+                    'request_time' => now()->format('YmdHis'),
+                    'hash' => null, // Will be generated by PayWay service
+                    'shipping' => 0.00,
+                    'type' => 'purchase',
+                    'view_type' => 'checkout',
+                    'customer_info' => [
+                        'firstname' => $this->customer_firstname,
+                        'lastname' => $this->customer_lastname,
+                        'email' => $this->customer_email,
+                        'phone' => $this->customer_phone,
+                    ],
+                    'urls' => [
+                        'return_url' => route('payment.aba-pay.return'),
+                        'cancel_url' => route('payment.aba-pay.cancel'),
+                    ],
+                ]);
+
+                $result = $payWayService->createPayment($paymentData);
+
+                if ($result['success']) {
+                    // Update the transaction record with the generated hash if available
+                    if (isset($result['payment_data']['hash'])) {
+                        $abaTransaction->update(['hash' => $result['payment_data']['hash']]);
+                    }
+
+                    // Store payment data for redirect form
+                    session([
+                        'payway_payment_data' => $paymentData,
+                        'payway_order_id' => $order->id
+                    ]);
+
+                    return [
+                        'success' => true,
+                        'redirect_url' => route('payment.aba-pay.redirect')
+                    ];
+                } else {
+                    Log::error('PayWay payment creation failed', [
+                        'order_id' => $order->id,
+                        'error' => $result['error'] ?? 'Unknown error',
+                        'error_code' => $result['error_code'] ?? null,
+                        'payment_data' => $paymentData
+                    ]);
+
+                    return [
+                        'success' => false,
+                        'error' => $result['error'] ?? 'Payment processing failed'
+                    ];
+                }
+            } else {
+                // Cash on Delivery - just mark as pending
+                $order->update(['payment_status' => 'pending']);
+                return [
+                    'success' => true,
+                    'redirect_url' => route('success', ['order_id' => $order->id])
+                ];
+            }
+        } catch (Exception $e) {
+            Log::error('Payment processing failed', [
+                'order_id' => $order->id,
+                'payment_method' => $this->payment_method,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Payment processing failed: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Prepare order items for PayWay
+     */
+    private function prepareOrderItems($order): array
+    {
+        $items = [];
+
+        foreach ($order->items as $item) {
+            $items[] = [
+                'name' => $item->product->name,
+                'quantity' => $item->quantity,
+                'price' => $item->unit_amount
+            ];
+        }
+
+        return $items;
     }
 
     public function render()

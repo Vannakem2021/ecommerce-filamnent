@@ -150,7 +150,7 @@ class DynamicPricingDemoSeeder extends Seeder
                 'compare_price_cents' => $variantComparePrice,
                 'cost_price_cents' => $product->cost_price_cents,
                 'stock_quantity' => rand(5, 50),
-                'stock_status' => 'in_stock',
+                // stock_status is now calculated automatically
                 'is_active' => true,
                 'is_default' => $variantOptions['Storage'] === '128GB' && $variantOptions['Color'] === 'Space Gray',
                 'options' => $variantOptions

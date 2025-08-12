@@ -7,7 +7,7 @@
         <div class="relative overflow-hidden">
             <a wire:navigate href="{{ route('product-details', $product->slug) }}" class="">
                 <img
-                    src="{{ $product->images && count($product->images) > 0 ? url('storage', $product->images[0]) : 'https://via.placeholder.com/400x300?text=No+Image' }}"
+                    src="{{ $product->images && count($product->images) > 0 ? asset('storage/' . $product->images[0]) : 'https://via.placeholder.com/400x300?text=No+Image' }}"
                     alt="{{ $product->name }}"
                     class="w-full h-64 object-cover transition-transform duration-500 group-hover:scale-110"
                 >
@@ -85,17 +85,7 @@
             </div>
             @endif
 
-            <!-- Rating -->
-            <div class="flex items-center mb-4">
-                <div class="flex text-yellow-400">
-                    @for($i = 1; $i <= 5; $i++)
-                        <svg class="w-4 h-4 {{ $i <= 4 ? 'fill-current' : 'text-gray-300 fill-current' }}" viewBox="0 0 24 24">
-                            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                        </svg>
-                    @endfor
-                </div>
-                <span class="text-sm text-gray-500 ml-2">({{ rand(10, 200) }} reviews)</span>
-            </div>
+
 
             <!-- Variant Options Preview (for products with variants) -->
             @if($product->has_variants && $product->variants && $product->variants->isNotEmpty())
@@ -156,6 +146,38 @@
                 @endif
             @endif
 
+            <!-- Stock Status Badge -->
+            @php
+                $stockDisplay = \App\Services\InventoryService::getDisplayStock($product);
+                $stockStatus = $stockDisplay['status'];
+                $stockMessage = $stockDisplay['message'];
+            @endphp
+
+            <div class="mb-4">
+                @if($stockStatus === 'out_of_stock')
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                        </svg>
+                        {{ $stockMessage }}
+                    </span>
+                @elseif($stockStatus === 'low_stock')
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                        </svg>
+                        {{ $stockMessage }}
+                    </span>
+                @else
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        {{ $stockMessage }}
+                    </span>
+                @endif
+            </div>
+
             <!-- Price Section -->
             <div class="flex items-center justify-between mb-5">
                 <div class="flex items-baseline gap-2">
@@ -183,23 +205,23 @@
 
                     @if($showPriceRange)
                         <span class="text-2xl font-bold text-custom-teal-700">
-                            {{ Number::currency($minPrice, 'INR') }} - {{ Number::currency($maxPrice, 'INR') }}
+                            {{ Number::currency($minPrice, 'USD') }} - {{ Number::currency($maxPrice, 'USD') }}
                         </span>
                     @else
                         <span class="text-2xl font-bold text-custom-teal-700">
-                            {{ Number::currency($displayPrice, 'INR') }}
+                            {{ Number::currency($displayPrice, 'USD') }}
                         </span>
                     @endif
 
                     @if($product->compare_price && $product->compare_price > ($product->price ?? 0))
                         <span class="text-sm text-gray-400 line-through">
-                            {{ Number::currency($product->compare_price, 'INR') }}
+                            {{ Number::currency($product->compare_price, 'USD') }}
                         </span>
                     @endif
                 </div>
                 @if($product->compare_price && $product->compare_price > ($product->price ?? 0))
                     <span class="text-sm font-semibold text-red-500 bg-red-50 px-2 py-1 rounded">
-                        Save {{ Number::currency($product->compare_price - ($product->price ?? 0), 'INR') }}
+                        Save {{ Number::currency($product->compare_price - ($product->price ?? 0), 'USD') }}
                     </span>
                 @endif
             </div>
@@ -218,18 +240,30 @@
                 </a>
             @else
                 <!-- For products without variants, show regular Add to Cart -->
-                <button
-                    wire:click.prevent='addToCart({{ $product->id }})'
-                    class="w-full bg-custom-teal-600 hover:bg-custom-teal-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    wire:loading.attr="disabled"
-                    wire:target="addToCart({{ $product->id }})"
-                >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                    </svg>
-                    <span wire:loading.remove wire:target='addToCart({{ $product->id }})'>Add to Cart</span>
-                    <span wire:loading wire:target='addToCart({{ $product->id }})'>Adding...</span>
-                </button>
+                @if($stockStatus === 'out_of_stock')
+                    <button
+                        disabled
+                        class="w-full bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 cursor-not-allowed"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        <span>Out of Stock</span>
+                    </button>
+                @else
+                    <button
+                        wire:click.prevent='addToCart({{ $product->id }})'
+                        class="w-full bg-custom-teal-600 hover:bg-custom-teal-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        wire:loading.attr="disabled"
+                        wire:target="addToCart({{ $product->id }})"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        <span wire:loading.remove wire:target='addToCart({{ $product->id }})'>Add to Cart</span>
+                        <span wire:loading wire:target='addToCart({{ $product->id }})'>Adding...</span>
+                    </button>
+                @endif
             @endif
 
             <!-- Additional Features -->

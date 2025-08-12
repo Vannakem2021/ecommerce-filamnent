@@ -31,290 +31,193 @@
         <div class="flex flex-col lg:flex-row gap-8">
             <!-- Main Content -->
             <div class="flex-1">
-                <!-- Contact Information -->
-                <div class="bg-white rounded-2xl shadow-md p-8 mb-8">
-                    <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-2xl font-bold text-gray-900">Contact Information</h2>
-                        @guest
-                            <a href="{{ route('login') }}" wire:navigate class="text-custom-teal-600 hover:text-custom-teal-700 font-medium transition-colors">
-                                <i class="fas fa-user mr-2"></i>Log in
-                            </a>
-                        @endguest
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                            <input
-                                wire:model="email"
-                                type="email"
-                                placeholder="john.doe@example.com"
-                                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500 transition-all duration-200"
-                            />
-                            @error('email') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                            <input
-                                wire:model="phone"
-                                type="tel"
-                                placeholder="+1 (555) 123-4567"
-                                class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500 transition-all duration-200"
-                            />
-                            @error('phone') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
-                        </div>
-                    </div>
-
-                    <div class="mt-6">
-                        <label class="flex items-center">
-                            <input
-                                wire:model="newsletter_signup"
-                                type="checkbox"
-                                class="w-4 h-4 text-custom-teal-600 rounded focus:ring-custom-teal-500"
-                            />
-                            <span class="ml-2 text-sm text-gray-700">Email me with news and offers</span>
-                        </label>
-                    </div>
-                </div>
 
                 <!-- Shipping Address -->
                 <div class="bg-white rounded-2xl shadow-md p-8 mb-8">
                     <h2 class="text-2xl font-bold text-gray-900 mb-6">Shipping Address</h2>
 
-                    <div class="space-y-4 mb-6">
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="selected_address"
-                                type="radio"
-                                name="address"
-                                value="existing_1"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <span class="ml-3">
-                                <p class="font-medium text-gray-900">John Doe</p>
-                                <p class="text-sm text-gray-600">123 Main Street, Apt 4B, New York, NY 10001</p>
-                            </span>
-                        </label>
+                    <!-- Address Form (Always Visible) -->
 
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="selected_address"
-                                type="radio"
-                                name="address"
-                                value="existing_2"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <span class="ml-3">
-                                <p class="font-medium text-gray-900">John Doe</p>
-                                <p class="text-sm text-gray-600">456 Business Ave, Suite 200, New York, NY 10005</p>
-                            </span>
-                        </label>
-                    </div>
+                            <!-- Contact Information -->
+                            <div class="space-y-4 mb-6">
+                                <h4 class="text-base font-semibold text-gray-800">Contact Information</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Contact Name <span class="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            wire:model="contact_name"
+                                            type="text"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                            placeholder="Enter full name"
+                                        />
+                                        @error('contact_name') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Phone Number <span class="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            wire:model="phone_number"
+                                            type="tel"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                            placeholder="e.g., +855 12 345 678"
+                                        />
+                                        @error('phone_number') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                </div>
+                            </div>
 
-                    <button
-                        wire:click="toggleNewAddressForm"
-                        class="text-custom-teal-600 hover:text-custom-teal-700 font-medium transition-colors"
-                    >
-                        <i class="fas fa-plus mr-2"></i>Add New Address
-                    </button>
+                            <!-- Address Details -->
+                            <div class="space-y-4 mb-6">
+                                <h4 class="text-base font-semibold text-gray-800">Address Details</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">House Number</label>
+                                        <input
+                                            wire:model="house_number"
+                                            type="text"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                            placeholder="e.g., #123"
+                                        />
+                                        @error('house_number') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Street Number</label>
+                                        <input
+                                            wire:model="street_number"
+                                            type="text"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                            placeholder="e.g., Street 240"
+                                        />
+                                        @error('street_number') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                </div>
+                            </div>
 
-                    <!-- New Address Form -->
-                    @if($show_new_address_form)
-                        <div class="mt-6 pt-6 border-t border-gray-200">
-                            <h3 class="text-lg font-semibold text-gray-900 mb-4">New Address</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">First Name</label>
-                                    <input
-                                        wire:model="first_name"
-                                        type="text"
-                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
-                                    />
-                                    @error('first_name') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                            <!-- Cambodia Location Selection -->
+                            <div class="space-y-4 mb-6">
+                                <h4 class="text-base font-semibold text-gray-800">Location</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            City/Province <span class="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            id="city_province"
+                                            wire:model="city_province"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                        >
+                                            <option value="">Select Province/City</option>
+                                        </select>
+                                        @error('city_province') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            District/Srok/Khan <span class="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            id="district_khan"
+                                            wire:model="district_khan"
+                                            disabled
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500 disabled:bg-gray-100"
+                                        >
+                                            <option value="">Select District</option>
+                                        </select>
+                                        @error('district_khan') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Commune/Khum/Sangkat <span class="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            id="commune_sangkat"
+                                            wire:model="commune_sangkat"
+                                            disabled
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500 disabled:bg-gray-100"
+                                        >
+                                            <option value="">Select Commune</option>
+                                        </select>
+                                        @error('commune_sangkat') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+
+                                <!-- Postal Code (Auto-filled) -->
+                                <div class="max-w-xs">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Postal Code <span class="text-red-500">*</span>
+                                    </label>
                                     <input
-                                        wire:model="last_name"
-                                        type="text"
-                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
-                                    />
-                                    @error('last_name') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                                    <input
-                                        wire:model="address_phone"
-                                        type="tel"
-                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
-                                    />
-                                    @error('address_phone') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
-                                </div>
-                                <div class="md:col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Street Address</label>
-                                    <input
-                                        wire:model="street_address"
-                                        type="text"
-                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
-                                    />
-                                    @error('street_address') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">City</label>
-                                    <input
-                                        wire:model="city"
-                                        type="text"
-                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
-                                    />
-                                    @error('city') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Postal Code</label>
-                                    <input
+                                        id="postal_code"
                                         wire:model="postal_code"
                                         type="text"
-                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                        readonly
+                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-50"
+                                        placeholder="Auto-filled"
                                     />
+                                    <p class="text-sm text-gray-500 mt-1">
+                                        Postal code will be automatically filled based on your area selection
+                                    </p>
                                     @error('postal_code') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                                 </div>
                             </div>
-                            <div class="flex gap-4 mt-6">
-                                <button
-                                    wire:click="saveNewAddress"
-                                    class="bg-custom-teal-600 hover:bg-custom-teal-700 text-white font-semibold py-2 px-6 rounded-xl transition-colors"
-                                >
-                                    Save Address
-                                </button>
-                                <button
-                                    wire:click="toggleNewAddressForm"
-                                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-6 rounded-xl transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    @endif
-                </div>
 
-                <!-- Shipping Method -->
-                <div class="bg-white rounded-2xl shadow-md p-8 mb-8">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Shipping Method</h2>
-
-                    <div class="space-y-4">
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="shipping_method"
-                                type="radio"
-                                name="shipping"
-                                value="standard"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <div class="ml-3 flex-1">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="font-medium text-gray-900">Standard Delivery</p>
-                                        <p class="text-sm text-gray-600">5-7 business days</p>
-                                    </div>
-                                    <span class="font-semibold text-custom-teal-700">FREE</span>
+                            <!-- Additional Information -->
+                            <div class="space-y-4 mb-6">
+                                <h4 class="text-base font-semibold text-gray-800">Additional Information</h4>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Delivery Instructions</label>
+                                    <textarea
+                                        wire:model="additional_info"
+                                        rows="3"
+                                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                        placeholder="Any special delivery instructions (optional)"
+                                    ></textarea>
+                                    @error('additional_info') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
                                 </div>
                             </div>
-                        </label>
-
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="shipping_method"
-                                type="radio"
-                                name="shipping"
-                                value="express"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <div class="ml-3 flex-1">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="font-medium text-gray-900">Express Delivery</p>
-                                        <p class="text-sm text-gray-600">2-3 business days</p>
-                                    </div>
-                                    <span class="font-semibold text-gray-900">${{ number_format(15.99, 2) }}</span>
-                                </div>
-                            </div>
-                        </label>
-
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="shipping_method"
-                                type="radio"
-                                name="shipping"
-                                value="overnight"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <div class="ml-3 flex-1">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="font-medium text-gray-900">Overnight Delivery</p>
-                                        <p class="text-sm text-gray-600">Next business day</p>
-                                    </div>
-                                    <span class="font-semibold text-gray-900">${{ number_format(29.99, 2) }}</span>
-                                </div>
-                            </div>
-                        </label>
-                    </div>
                 </div>
 
                 <!-- Payment Method -->
-                <div class="bg-white rounded-2xl shadow-md p-8">
+                <div class="bg-white rounded-2xl shadow-md p-8 mb-8">
                     <h2 class="text-2xl font-bold text-gray-900 mb-6">Payment Method</h2>
 
                     <div class="space-y-4 mb-6">
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="payment_method"
-                                type="radio"
-                                name="payment"
-                                value="card"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <div class="ml-3 flex items-center">
-                                <i class="fas fa-credit-card text-gray-600 mr-3"></i>
-                                <div>
-                                    <p class="font-medium text-gray-900">Credit/Debit Card</p>
-                                    <p class="text-sm text-gray-600">Pay with Visa, Mastercard, or Amex</p>
+                        @forelse($available_payment_methods as $method)
+                            <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors {{ $payment_method === $method['code'] ? 'border-custom-teal-500 bg-custom-teal-50' : '' }}">
+                                <input
+                                    wire:model="payment_method"
+                                    type="radio"
+                                    name="payment"
+                                    value="{{ $method['code'] }}"
+                                    class="w-4 h-4 text-custom-teal-600"
+                                />
+                                <div class="ml-3 flex items-center">
+                                    @if($method['icon'])
+                                        <i class="{{ $method['icon'] }} text-gray-600 mr-3"></i>
+                                    @else
+                                        <i class="fas fa-credit-card text-gray-600 mr-3"></i>
+                                    @endif
+                                    <div>
+                                        <div class="flex items-center">
+                                            <p class="font-medium text-gray-900">{{ $method['name'] }}</p>
+                                            @if($method['provider'] === 'aba_pay')
+                                                <span class="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">Recommended</span>
+                                            @endif
+                                        </div>
+                                        @if($method['description'])
+                                            <p class="text-sm text-gray-600">{{ $method['description'] }}</p>
+                                        @endif
+                                    </div>
                                 </div>
+                            </label>
+                        @empty
+                            <div class="text-center py-8">
+                                <i class="fas fa-exclamation-triangle text-4xl text-gray-400 mb-4"></i>
+                                <p class="text-gray-600">No payment methods available</p>
                             </div>
-                        </label>
-
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="payment_method"
-                                type="radio"
-                                name="payment"
-                                value="paypal"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <div class="ml-3 flex items-center">
-                                <i class="fab fa-paypal text-blue-600 mr-3"></i>
-                                <div>
-                                    <p class="font-medium text-gray-900">PayPal</p>
-                                    <p class="text-sm text-gray-600">Pay with your PayPal account</p>
-                                </div>
-                            </div>
-                        </label>
-
-                        <label class="flex items-center p-4 border border-gray-300 rounded-xl cursor-pointer hover:border-custom-teal-500 transition-colors">
-                            <input
-                                wire:model="payment_method"
-                                type="radio"
-                                name="payment"
-                                value="cod"
-                                class="w-4 h-4 text-custom-teal-600"
-                            />
-                            <div class="ml-3 flex items-center">
-                                <i class="fas fa-money-bill-wave text-green-600 mr-3"></i>
-                                <div>
-                                    <p class="font-medium text-gray-900">Cash on Delivery</p>
-                                    <p class="text-sm text-gray-600">Pay when you receive your order</p>
-                                </div>
-                            </div>
-                        </label>
+                        @endforelse
                     </div>
 
                     <!-- Card Details Form -->
@@ -381,6 +284,90 @@
                             </label>
                         </div>
                     @endif
+
+                    <!-- ABA Pay Customer Information -->
+                    @if($payment_method === 'aba_pay')
+                        <div class="border-t border-gray-200 pt-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Customer Information</h3>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                                        <input
+                                            wire:model="customer_firstname"
+                                            type="text"
+                                            placeholder="John"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                        />
+                                        @error('customer_firstname') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                                        <input
+                                            wire:model="customer_lastname"
+                                            type="text"
+                                            placeholder="Doe"
+                                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                        />
+                                        @error('customer_lastname') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
+                                    <div class="relative">
+                                        <input
+                                            wire:model="customer_email"
+                                            type="email"
+                                            placeholder="john@example.com"
+                                            class="w-full px-4 py-3 pl-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                        />
+                                        <i class="fas fa-envelope absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                                    </div>
+                                    @error('customer_email') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Phone Number (Optional)</label>
+                                    <div class="relative">
+                                        <input
+                                            wire:model="customer_phone"
+                                            type="tel"
+                                            placeholder="+855 12 345 678"
+                                            class="w-full px-4 py-3 pl-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
+                                        />
+                                        <i class="fas fa-phone absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                                    </div>
+                                    @error('customer_phone') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+                                </div>
+                            </div>
+
+                            <div class="mt-6 p-4 bg-blue-50 rounded-xl">
+                                <div class="flex items-start">
+                                    <i class="fas fa-info-circle text-blue-500 mt-1 mr-3"></i>
+                                    <div>
+                                        <h4 class="text-sm font-medium text-blue-900 mb-1">ABA Pay Payment</h4>
+                                        <p class="text-sm text-blue-700">
+                                            You will be redirected to ABA Pay's secure payment gateway to complete your payment.
+                                            Supports ABA PAY, KHQR, cards, Google Pay, and WeChat Pay.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+
+                    <!-- KHQR Details -->
+                    @if($payment_method === 'khqr')
+                        <div class="border-t border-gray-200 pt-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">KHQR Payment</h3>
+                            <div class="bg-gray-50 rounded-xl p-6 text-center">
+                                <i class="fas fa-qrcode text-6xl text-gray-400 mb-4"></i>
+                                <p class="text-gray-600 mb-2">QR Code will be generated after placing order</p>
+                                <p class="text-sm text-gray-500">Scan with your banking app to complete payment</p>
+                            </div>
+                        </div>
+                    @endif
                 </div>
             </div>
 
@@ -394,16 +381,40 @@
                         <div class="space-y-4 mb-6">
                             @foreach($cart_items as $item)
                                 <div class="flex items-center space-x-4">
-                                    @if($item['image'])
-                                        <img src="{{ Storage::url($item['image']) }}" alt="{{ $item['name'] }}" class="w-16 h-16 object-cover rounded-lg">
+                                    @php
+                                        $imageUrl = null;
+                                        if (!empty($item['image'])) {
+                                            // Check if it's already a full URL or needs Storage::url()
+                                            if (str_starts_with($item['image'], 'http')) {
+                                                $imageUrl = $item['image'];
+                                            } else {
+                                                $imageUrl = Storage::url($item['image']);
+                                            }
+                                        }
+                                    @endphp
+
+                                    @if($imageUrl)
+                                        <img src="{{ $imageUrl }}" alt="{{ $item['name'] }}" class="w-16 h-16 object-cover rounded-lg"
+                                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <div class="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center" style="display: none;">
+                                            <i class="fas fa-image text-gray-400"></i>
+                                        </div>
                                     @else
                                         <div class="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
                                             <i class="fas fa-image text-gray-400"></i>
                                         </div>
                                     @endif
+
                                     <div class="flex-1">
                                         <p class="font-medium text-gray-900">{{ $item['name'] }}</p>
                                         <p class="text-sm text-gray-600">Qty: {{ $item['quantity'] }}</p>
+                                        @if(!empty($item['variant_options']))
+                                            <p class="text-xs text-gray-500">
+                                                @foreach($item['variant_options'] as $key => $value)
+                                                    {{ $key }}: {{ $value }}@if(!$loop->last), @endif
+                                                @endforeach
+                                            </p>
+                                        @endif
                                     </div>
                                     <span class="font-semibold text-gray-900">${{ number_format($item['total_amount'], 2) }}</span>
                                 </div>
@@ -442,25 +453,6 @@
                         <div class="flex justify-between items-center">
                             <span class="text-xl font-bold text-gray-900">Total</span>
                             <span class="text-2xl font-bold text-custom-teal-700">${{ number_format($grand_total, 2) }}</span>
-                        </div>
-                    </div>
-
-                    <!-- Promo Code -->
-                    <div class="mb-6">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Promo Code</label>
-                        <div class="flex gap-2">
-                            <input
-                                wire:model="promo_code"
-                                type="text"
-                                placeholder="Enter code"
-                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500"
-                            />
-                            <button
-                                wire:click="applyPromoCode"
-                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors"
-                            >
-                                Apply
-                            </button>
                         </div>
                     </div>
 

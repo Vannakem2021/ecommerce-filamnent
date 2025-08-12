@@ -1,26 +1,26 @@
 @props(['product', 'limit' => 5])
 
 @php
-    // Get key specifications for compact display
-    $productSpecs = $product->specificationsWithAttributes()
-        ->limit($limit)
-        ->get();
+    // Use simplified JSON-based attributes for compact display
+    $productAttributes = $product->getProductAttributes();
 
-    // Get default variant specs if product has variants
-    $variantSpecs = collect();
+    // Get default variant options if product has variants
+    $variantOptions = [];
     if ($product->has_variants && $product->defaultVariant) {
-        $variantSpecs = $product->defaultVariant->specificationsWithAttributes()
-            ->limit($limit)
-            ->get();
+        $variantOptions = $product->defaultVariant->getVariantOptions();
     }
 
-    // Combine and prioritize most important specs
-    $allSpecs = $productSpecs->concat($variantSpecs)
-        ->unique('specification_attribute_id')
-        ->sortBy(function ($spec) {
-            return $spec->specificationAttribute->sort_order ?? 999;
-        })
-        ->take($limit);
+    // Combine and limit to most important specs
+    $allSpecs = array_merge($productAttributes, $variantOptions);
+
+    // Convert to collection and take only the specified limit
+    $specifications = collect($allSpecs)->take($limit)->map(function ($value, $key) {
+        return (object) [
+            'name' => ucfirst(str_replace('_', ' ', $key)),
+            'value' => $value,
+            'key' => $key
+        ];
+    });
 @endphp
 
 @if($allSpecs->isNotEmpty())

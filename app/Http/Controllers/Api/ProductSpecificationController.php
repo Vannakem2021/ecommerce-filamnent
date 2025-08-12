@@ -16,55 +16,42 @@ class ProductSpecificationController extends Controller
     {
         $variantId = $request->get('variant');
         $variant = null;
-        
+
         if ($variantId) {
             $variant = ProductVariant::where('id', $variantId)
                 ->where('product_id', $product->id)
                 ->first();
         }
-        
-        // Get product-level specifications
-        $productSpecs = $product->specificationsWithAttributes()->get();
-        
-        // Get variant-level specifications if variant is specified
-        $variantSpecs = collect();
+
+        // Use simplified JSON-based attributes
+        $productAttributes = $product->getProductAttributes();
+
+        // Get variant-specific options if variant is specified
+        $variantOptions = [];
         if ($variant) {
-            $variantSpecs = $variant->specificationsWithAttributes()->get();
+            $variantOptions = $variant->getVariantOptions();
         } elseif ($product->has_variants && $product->defaultVariant) {
-            $variantSpecs = $product->defaultVariant->specificationsWithAttributes()->get();
+            $variantOptions = $product->defaultVariant->getVariantOptions();
         }
-        
-        // Combine specifications, with variant specs overriding product specs
-        $allSpecs = $productSpecs->keyBy('specification_attribute_id');
-        $variantSpecs->each(function ($spec) use ($allSpecs) {
-            $allSpecs[$spec->specification_attribute_id] = $spec;
-        });
-        
-        $specifications = $allSpecs->values()
-            ->sortBy(function ($spec) {
-                return $spec->specificationAttribute->sort_order ?? 999;
-            })
-            ->map(function ($spec) {
-                $attribute = $spec->specificationAttribute;
-                
-                return [
-                    'id' => $spec->id,
-                    'attribute_id' => $attribute->id,
-                    'name' => $attribute->name,
-                    'code' => $attribute->code,
-                    'data_type' => $attribute->data_type,
-                    'unit' => $attribute->unit,
-                    'scope' => $attribute->scope,
-                    'description' => $attribute->description,
-                    'raw_value' => $spec->raw_value,
-                    'formatted_value' => $spec->formatted_value,
-                    'is_filterable' => $attribute->is_filterable,
-                ];
-            })
-            ->filter(function ($spec) {
-                return !empty($spec['formatted_value']);
-            })
-            ->values();
+
+        // Combine product attributes and variant options
+        $allSpecs = array_merge($productAttributes, $variantOptions);
+
+        // Convert to simplified format for API response
+        $specifications = collect($allSpecs)->map(function ($value, $key) {
+            return [
+                'id' => $key,
+                'name' => ucfirst(str_replace('_', ' ', $key)),
+                'code' => $key,
+                'data_type' => 'text',
+                'unit' => null,
+                'scope' => in_array($key, ['color', 'storage', 'ram', 'size']) ? 'variant' : 'product',
+                'description' => null,
+                'raw_value' => $value,
+                'formatted_value' => $value,
+                'is_filterable' => true,
+            ];
+        })->values();
         
         return response()->json([
             'product_id' => $product->id,
@@ -80,79 +67,61 @@ class ProductSpecificationController extends Controller
     {
         $categoryId = $request->get('category');
         $query = Product::query();
-        
+
         if ($categoryId) {
             $query->where('category_id', $categoryId);
         }
-        
+
         // Get all products in the category/filter
-        $products = $query->with(['specificationsWithAttributes', 'variants.specificationsWithAttributes'])
-            ->get();
-        
-        // Collect all unique filterable specifications
+        $products = $query->with(['variants'])->get();
+
+        // Collect all unique filterable specifications from JSON attributes
         $filterableSpecs = collect();
-        
+
         foreach ($products as $product) {
-            // Add product-level specs
-            $productSpecs = $product->specificationsWithAttributes()
-                ->where('specification_attributes.is_filterable', true)
-                ->get();
-            
-            foreach ($productSpecs as $spec) {
-                $this->addSpecToFilterable($filterableSpecs, $spec);
+            // Add product-level attributes
+            $productAttributes = $product->getProductAttributes();
+            foreach ($productAttributes as $key => $value) {
+                $this->addSpecToFilterableSimple($filterableSpecs, $key, $value, 'product');
             }
-            
-            // Add variant-level specs
+
+            // Add variant-level options
             foreach ($product->variants as $variant) {
-                $variantSpecs = $variant->specificationsWithAttributes()
-                    ->where('specification_attributes.is_filterable', true)
-                    ->get();
-                
-                foreach ($variantSpecs as $spec) {
-                    $this->addSpecToFilterable($filterableSpecs, $spec);
+                $variantOptions = $variant->getVariantOptions();
+                foreach ($variantOptions as $key => $value) {
+                    $this->addSpecToFilterableSimple($filterableSpecs, $key, $value, 'variant');
                 }
             }
         }
-        
+
         return response()->json([
             'filterable_specifications' => $filterableSpecs->values(),
         ]);
     }
     
-    private function addSpecToFilterable($collection, $spec)
+    private function addSpecToFilterableSimple($collection, $key, $value, $scope)
     {
-        $attribute = $spec->specificationAttribute;
-        $key = $attribute->code;
-        
         if (!$collection->has($key)) {
             $collection[$key] = [
-                'attribute_id' => $attribute->id,
-                'name' => $attribute->name,
-                'code' => $attribute->code,
-                'data_type' => $attribute->data_type,
-                'unit' => $attribute->unit,
+                'attribute_id' => $key,
+                'name' => ucfirst(str_replace('_', ' ', $key)),
+                'code' => $key,
+                'data_type' => 'text',
+                'unit' => null,
+                'scope' => $scope,
                 'values' => collect(),
                 'min_value' => null,
                 'max_value' => null,
             ];
         }
-        
+
         $item = $collection[$key];
-        
-        if ($attribute->data_type === 'number' && $spec->value_number !== null) {
-            $item['min_value'] = $item['min_value'] === null 
-                ? $spec->value_number 
-                : min($item['min_value'], $spec->value_number);
-            $item['max_value'] = $item['max_value'] === null 
-                ? $spec->value_number 
-                : max($item['max_value'], $spec->value_number);
-        } else {
-            $value = $spec->formatted_value;
-            if ($value && !$item['values']->contains($value)) {
-                $item['values']->push($value);
-            }
+
+        // Add unique values
+        if ($value && !$item['values']->contains($value)) {
+            $item['values']->push($value);
         }
-        
+
         $collection[$key] = $item;
     }
 }

@@ -3,8 +3,10 @@
 namespace App\Filament\Resources\OrderResource\RelationManagers;
 
 use Filament\Forms;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
@@ -21,57 +23,102 @@ class AddressRelationManager extends RelationManager
     {
         return $form
             ->schema([
-
-                TextInput::make('first_name')
+                Select::make('type')
+                    ->options([
+                        'shipping' => 'Shipping',
+                        'billing' => 'Billing',
+                    ])
+                    ->default('shipping')
                     ->required()
-                    ->maxLength(255),
-                
-                TextInput::make('last_name')
-                    ->required()
-                    ->maxLength(255),
+                    ->label('Address Type'),
 
-                TextInput::make('phone')
+                TextInput::make('contact_name')
+                    ->required()
+                    ->maxLength(255)
+                    ->label('Contact Name'),
+
+                TextInput::make('phone_number')
                     ->required()
                     ->tel()
-                    ->maxLength(20),
+                    ->maxLength(20)
+                    ->label('Phone Number'),
 
-                TextInput::make('city')
-                    ->required()
-                    ->maxLength(255),
+                TextInput::make('house_number')
+                    ->maxLength(100)
+                    ->label('House Number'),
 
-                TextInput::make('state')
-                    ->required()
-                    ->maxLength(255),
+                TextInput::make('street_number')
+                    ->maxLength(100)
+                    ->label('Street Number'),
 
-                TextInput::make('zip_code')
+                TextInput::make('city_province')
                     ->required()
-                    ->numeric()
-                    ->maxLength(10),
+                    ->maxLength(255)
+                    ->label('City/Province'),
 
-                Textarea::make('street_address')
+                TextInput::make('district_khan')
                     ->required()
+                    ->maxLength(255)
+                    ->label('District/Khan'),
+
+                TextInput::make('commune_sangkat')
+                    ->required()
+                    ->maxLength(255)
+                    ->label('Commune/Sangkat'),
+
+                TextInput::make('postal_code')
+                    ->required()
+                    ->maxLength(10)
+                    ->label('Postal Code'),
+
+                Textarea::make('additional_info')
+                    ->maxLength(500)
+                    ->label('Additional Information')
                     ->columnSpanFull(),
+
+                Toggle::make('is_default')
+                    ->label('Default Address'),
             ]);
     }
 
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('street_address')
+            ->recordTitleAttribute('contact_name')
             ->columns([
-                
-                TextColumn::make('full_name')
-                    ->label('Full Name'),
+                TextColumn::make('type')
+                    ->label('Type')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'shipping' => 'success',
+                        'billing' => 'warning',
+                        default => 'gray',
+                    }),
 
-                TextColumn::make('city'),
+                TextColumn::make('contact_name')
+                    ->label('Contact Name')
+                    ->searchable()
+                    ->sortable(),
 
-                TextColumn::make('state'),
+                TextColumn::make('phone_number')
+                    ->label('Phone')
+                    ->searchable(),
 
-                TextColumn::make('zip_code'),
+                TextColumn::make('city_province')
+                    ->label('City/Province')
+                    ->searchable(),
 
-                TextColumn::make('street_address'),
+                TextColumn::make('district_khan')
+                    ->label('District/Khan')
+                    ->searchable(),
 
-                TextColumn::make('phone'),
+                TextColumn::make('postal_code')
+                    ->label('Postal Code')
+                    ->searchable(),
+
+                TextColumn::make('is_default')
+                    ->label('Default')
+                    ->boolean(),
             ])
             ->filters([
                 //

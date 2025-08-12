@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Checkout Address Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        select, input { padding: 8px; margin: 5px; width: 200px; }
+        .form-group { margin: 10px 0; }
+        label { display: block; margin-bottom: 5px; }
+        .text-red-500 { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Test Checkout Address Form (Simulating Livewire)</h1>
+    
+    <div class="form-group">
+        <label>City/Province:</label>
+        <select id="city_province">
+            <option value="">Select Province/City</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>District/Khan:</label>
+        <select id="district_khan" disabled>
+            <option value="">Select District</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Commune/Sangkat:</label>
+        <select id="commune_sangkat" disabled>
+            <option value="">Select Commune</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Postal Code:</label>
+        <input type="text" id="postal_code" readonly placeholder="Auto-filled">
+    </div>
+    
+    <script>
+        // Simulate Livewire environment
+        console.log('Simulating Livewire checkout page...');
+
+        // Note: Cambodia Address Form is now included in the main app.js bundle
+        // Test the initialization manually
+        setTimeout(() => {
+            console.log('Manual initialization test...');
+            if (window.CambodiaAddressForm) {
+                window.testAddressForm = new window.CambodiaAddressForm();
+            } else {
+                console.log('CambodiaAddressForm not found - it should be in the compiled app.js');
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

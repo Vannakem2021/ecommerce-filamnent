@@ -24,7 +24,7 @@
             <div class="bg-white rounded-lg shadow-md dark:bg-gray-800 hover:shadow-lg transition-shadow duration-300">
                 <div class="flex flex-col items-center justify-center p-8">
                     @if($brand->image)
-                    <img src="{{ url('storage', $brand->image) }}" alt="{{ $brand->name }}" class="w-16 h-16 mb-4 object-contain">
+                    <img src="{{ asset('storage/' . $brand->image) }}" alt="{{ $brand->name }}" class="w-16 h-16 mb-4 object-contain">
                     @else
                     <div class="w-16 h-16 mb-4 bg-teal-100 dark:bg-teal-900 rounded-lg flex items-center justify-center">
                         <span class="text-teal-600 dark:text-teal-400 font-bold text-lg">{{ substr($brand->name, 0, 2) }}</span>

@@ -76,8 +76,7 @@ class HomePage extends Component
                 'brand:id,name,slug',
                 'variants' => function ($query) {
                     $query->where('is_active', true)
-                        ->orderBy('is_default', 'desc')
-                        ->with(['attributeValues.attribute']);
+                        ->orderBy('is_default', 'desc');
                 },
                 'defaultVariant'
             ])
@@ -92,8 +91,7 @@ class HomePage extends Component
                 'brand:id,name,slug',
                 'variants' => function ($query) {
                     $query->where('is_active', true)
-                        ->orderBy('is_default', 'desc')
-                        ->with(['attributeValues.attribute']);
+                        ->orderBy('is_default', 'desc');
                 },
                 'defaultVariant'
             ])
@@ -110,8 +108,7 @@ class HomePage extends Component
                     'brand:id,name,slug',
                     'variants' => function ($query) {
                         $query->where('is_active', true)
-                            ->orderBy('is_default', 'desc')
-                            ->with(['attributeValues.attribute']);
+                            ->orderBy('is_default', 'desc');
                     },
                     'defaultVariant'
                 ])

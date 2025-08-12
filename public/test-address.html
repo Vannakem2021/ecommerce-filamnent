@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Cambodia Address Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        select, input { padding: 8px; margin: 5px; width: 200px; }
+        .form-group { margin: 10px 0; }
+        label { display: block; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Test Cambodia Address Form</h1>
+    
+    <div class="form-group">
+        <label>City/Province:</label>
+        <select id="city_province">
+            <option value="">Select Province/City</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>District/Khan:</label>
+        <select id="district_khan" disabled>
+            <option value="">Select District</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Commune/Sangkat:</label>
+        <select id="commune_sangkat" disabled>
+            <option value="">Select Commune</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Postal Code:</label>
+        <input type="text" id="postal_code" readonly placeholder="Auto-filled">
+    </div>
+    
+    <script>
+        // Simple test without external file
+        console.log('Testing address form...');
+
+        // Test API endpoint directly
+        fetch('/api/addresses/provinces')
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Provinces data:', data);
+
+                const select = document.getElementById('city_province');
+                data.forEach(province => {
+                    const option = document.createElement('option');
+                    option.value = province.name_kh;
+                    option.textContent = `${province.name_en} (${province.name_kh})`;
+                    option.dataset.provinceId = province.id;
+                    select.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    </script>
+</body>
+</html>

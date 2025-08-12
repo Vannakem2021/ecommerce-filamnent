@@ -1,25 +1,27 @@
 @props(['product', 'selectedVariant' => null])
 
 @php
-    // Get all specifications for the product
-    $productSpecs = $product->specificationsWithAttributes()->get();
-    
-    // Get variant specifications if a variant is selected
-    $variantSpecs = collect();
+    // Use simplified JSON-based attributes instead of complex specifications
+    $productAttributes = $product->getProductAttributes();
+
+    // Get variant-specific options if a variant is selected
+    $variantOptions = [];
     if ($selectedVariant) {
-        $variantSpecs = $selectedVariant->specificationsWithAttributes()->get();
+        $variantOptions = $selectedVariant->getVariantOptions();
     } elseif ($product->has_variants && $product->defaultVariant) {
-        $variantSpecs = $product->defaultVariant->specificationsWithAttributes()->get();
+        $variantOptions = $product->defaultVariant->getVariantOptions();
     }
-    
-    // Combine specifications, with variant specs overriding product specs
-    $allSpecs = $productSpecs->keyBy('specification_attribute_id');
-    $variantSpecs->each(function ($spec) use ($allSpecs) {
-        $allSpecs[$spec->specification_attribute_id] = $spec;
-    });
-    
-    $specifications = $allSpecs->values()->sortBy(function ($spec) {
-        return $spec->specificationAttribute->sort_order ?? 999;
+
+    // Combine product attributes and variant options for display
+    $allSpecs = array_merge($productAttributes, $variantOptions);
+
+    // Convert to collection for easier handling
+    $specifications = collect($allSpecs)->map(function ($value, $key) {
+        return (object) [
+            'name' => ucfirst(str_replace('_', ' ', $key)),
+            'value' => $value,
+            'key' => $key
+        ];
     });
 @endphp
 
@@ -31,41 +33,28 @@
 
     <div class="divide-y divide-gray-200" data-specifications-list>
         @foreach($specifications as $spec)
-            @php
-                $attribute = $spec->specificationAttribute;
-                $formattedValue = $spec->formatted_value;
-            @endphp
-            
-            @if($formattedValue)
             <div class="px-6 py-4 flex justify-between items-start">
                 <div class="flex-1">
                     <dt class="text-sm font-medium text-gray-900">
-                        {{ $attribute->name }}
-                        @if($attribute->unit && $attribute->data_type === 'number')
-                            <span class="text-gray-500 font-normal">({{ $attribute->unit }})</span>
-                        @endif
+                        {{ $spec->name }}
                     </dt>
-                    @if($attribute->description)
-                        <dd class="text-xs text-gray-500 mt-1">{{ $attribute->description }}</dd>
-                    @endif
                 </div>
-                
+
                 <div class="flex-shrink-0 ml-4">
                     <dd class="text-sm text-gray-900 font-medium">
-                        {{ $formattedValue }}
+                        {{ $spec->value }}
                     </dd>
-                    
-                    @if($attribute->scope === 'variant')
+
+                    @if(in_array($spec->key, ['color', 'storage', 'ram', 'size']))
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 mt-1">
                             Variant
                         </span>
                     @endif
                 </div>
             </div>
-            @endif
         @endforeach
     </div>
-    
+
     @if($product->has_variants && !$selectedVariant)
     <div class="px-6 py-4 bg-yellow-50 border-t border-yellow-200">
         <p class="text-sm text-yellow-800">

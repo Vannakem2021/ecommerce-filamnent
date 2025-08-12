@@ -9,6 +9,9 @@ Alpine.start();
 // Import simplified variant selector
 import "./components/simplified-variant-selector.js";
 
+// Import Cambodia address form
+import "./components/cambodia-address-form.js";
+
 // Import Swiper and modules
 import { Swiper } from "swiper";
 import { Navigation, Pagination, Autoplay } from "swiper/modules";

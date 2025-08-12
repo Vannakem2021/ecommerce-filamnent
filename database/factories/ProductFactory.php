@@ -57,7 +57,6 @@ class ProductFactory extends Factory
             'variant_attributes' => null,
             'is_active' => $this->faker->boolean(90), // 90% chance of being active
             'is_featured' => $this->faker->boolean(20), // 20% chance of being featured
-            'in_stock' => $this->faker->boolean(80), // 80% chance of being in stock
             'on_sale' => $this->faker->boolean(25), // 25% chance of being on sale
             'meta_title' => $this->faker->optional()->sentence(),
             'meta_description' => $this->faker->optional()->sentence(),
@@ -91,7 +90,6 @@ class ProductFactory extends Factory
     public function inStock(): static
     {
         return $this->state(fn (array $attributes) => [
-            'in_stock' => true,
             'stock_status' => 'in_stock',
             'stock_quantity' => $this->faker->numberBetween(10, 100),
         ]);
@@ -103,7 +101,6 @@ class ProductFactory extends Factory
     public function outOfStock(): static
     {
         return $this->state(fn (array $attributes) => [
-            'in_stock' => false,
             'stock_status' => 'out_of_stock',
             'stock_quantity' => 0,
         ]);

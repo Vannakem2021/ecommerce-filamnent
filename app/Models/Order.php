@@ -38,4 +38,44 @@ class Order extends Model
     {
         return $this->hasOne(Address::class);
     }
+
+    /**
+     * Get the payment method model for this order
+     */
+    public function paymentMethodModel()
+    {
+        return $this->belongsTo(PaymentMethod::class, 'payment_method', 'code');
+    }
+
+    /**
+     * Get ABA Pay transactions for this order
+     */
+    public function abaPayTransactions()
+    {
+        return $this->hasMany(AbaPayTransaction::class);
+    }
+
+    /**
+     * Get the latest ABA Pay transaction for this order
+     */
+    public function latestAbaPayTransaction()
+    {
+        return $this->hasOne(AbaPayTransaction::class)->latestOfMany();
+    }
+
+    /**
+     * Check if this order uses ABA Pay
+     */
+    public function isAbaPayOrder(): bool
+    {
+        return $this->payment_method === 'aba_pay';
+    }
+
+    /**
+     * Get formatted grand total with currency
+     */
+    public function getFormattedTotalAttribute(): string
+    {
+        return number_format($this->grand_total, 2) . ' ' . ($this->currency ?? 'USD');
+    }
 }

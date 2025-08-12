@@ -11,31 +11,26 @@ class ProductVariant extends Model
     use HasFactory;
 
     protected $fillable = [
+        // Core variant fields
         'product_id',
         'sku',
-        'price_cents',
-        'override_price', // New column for simplified pricing
-        'stock_quantity',
-        'options', // New JSON column for variant choices
-        'image_url', // New column for variant-specific image
 
-        // Legacy fields (kept for backward compatibility)
-        'name',
-        'compare_price_cents',
-        'cost_price_cents',
-        'stock_status',
-        'low_stock_threshold',
-        'track_inventory',
-        'weight',
-        'dimensions',
-        'barcode',
-        'images',
+        // Simple pricing
+        'override_price', // Override price in cents, null = use product base price
+
+        // Simple inventory
+        'stock_quantity',
+
+        // Simple variant options (JSON: {"Color": "Black", "Storage": "128GB"})
+        'options',
+
+        // Status
         'is_active',
         'is_default',
     ];
 
     protected $casts = [
-        'options' => 'array', // New JSON cast for variant options
+        'options' => 'array', // JSON cast for variant options
         'dimensions' => 'array',
         'images' => 'array',
         'track_inventory' => 'boolean',
@@ -43,6 +38,66 @@ class ProductVariant extends Model
         'is_default' => 'boolean',
     ];
 
+    // ===========================================
+    // SIMPLE VARIANT METHODS FOR COLOR+STORAGE
+    // ===========================================
+
+    /**
+     * Get final price in cents (base price + modifier)
+     */
+    public function getFinalPriceCents(): int
+    {
+        $basePrice = $this->product->price_cents ?? 0;
+        $modifier = $this->override_price ?? $basePrice;
+        return $modifier;
+    }
+
+    /**
+     * Get final price in dollars
+     */
+    public function getFinalPrice(): float
+    {
+        return $this->getFinalPriceCents() / 100;
+    }
+
+    /**
+     * Get color from options
+     */
+    public function getColor(): ?string
+    {
+        return $this->options['Color'] ?? null;
+    }
+
+    /**
+     * Get storage from options
+     */
+    public function getStorage(): ?string
+    {
+        return $this->options['Storage'] ?? null;
+    }
+
+    /**
+     * Get display name (Color - Storage)
+     */
+    public function getDisplayName(): string
+    {
+        $color = $this->getColor();
+        $storage = $this->getStorage();
+
+        if ($color && $storage) {
+            return "{$color} - {$storage}";
+        }
+
+        return $this->sku ?? 'Variant';
+    }
+
+    /**
+     * Check if variant has stock
+     */
+    public function hasStock(): bool
+    {
+        return $this->stock_quantity > 0;
+    }
     /**
      * Boot the model
      */
@@ -63,6 +118,11 @@ class ProductVariant extends Model
                 static::where('product_id', $variant->product_id)
                     ->where('id', '!=', $variant->id)
                     ->update(['is_default' => false]);
+            }
+
+            // Validate stock quantity
+            if ($variant->stock_quantity < 0) {
+                throw new \InvalidArgumentException('Variant stock quantity cannot be negative');
             }
         });
 
@@ -257,7 +317,7 @@ class ProductVariant extends Model
         }
 
         $productName = $this->product ? $this->product->name : 'Product';
-        
+
         if ($this->options && !empty($this->options)) {
             $optionParts = [];
             foreach ($this->options as $key => $value) {
@@ -402,10 +462,38 @@ class ProductVariant extends Model
 
     /**
      * Check if variant is in stock
+     * Uses unified InventoryService for consistency
      */
     public function isInStock()
     {
-        return $this->stock_quantity > 0;
+        return \App\Services\InventoryService::variantHasStock($this);
+    }
+
+    /**
+     * Get stock status for this variant
+     * Uses unified InventoryService for consistency
+     */
+    public function getStockStatus()
+    {
+        return \App\Services\InventoryService::getVariantStockStatus($this);
+    }
+
+    /**
+     * Check if variant is low stock
+     * Uses unified InventoryService for consistency
+     */
+    public function isLowStock()
+    {
+        return \App\Services\InventoryService::isVariantLowStock($this);
+    }
+
+    /**
+     * Get calculated stock status (accessor)
+     * This makes stock_status always calculated, never manually set
+     */
+    public function getStockStatusAttribute()
+    {
+        return $this->getStockStatus();
     }
 
     /**
@@ -470,83 +558,10 @@ class ProductVariant extends Model
         return $query->where('is_default', true);
     }
 
-    // ===== SPECIFICATION RELATIONSHIPS =====
-
-    /**
-     * Get the variant-level specification values
-     */
-    public function specificationValues()
-    {
-        return $this->hasMany(VariantSpecificationValue::class, 'product_variant_id');
-    }
-
-    /**
-     * Get specification values with their attributes
-     */
-    public function specificationsWithAttributes()
-    {
-        return $this->specificationValues()
-            ->with(['specificationAttribute', 'specificationAttributeOption'])
-            ->whereHas('specificationAttribute', function ($query) {
-                $query->where('is_active', true);
-            })
-            ->join('specification_attributes', 'specification_attributes.id', '=', 'variant_specification_values.specification_attribute_id')
-            ->orderBy('specification_attributes.sort_order')
-            ->orderBy('specification_attributes.name');
-    }
-
-    /**
-     * Get all specifications for this variant (product-level + variant-level)
-     */
-    public function getAllSpecifications()
-    {
-        $productSpecs = $this->product->specificationsWithAttributes()->get();
-        $variantSpecs = $this->specificationsWithAttributes()->get();
-
-        // Variant specs override product specs for the same attribute
-        $allSpecs = $productSpecs->keyBy('specification_attribute_id');
-        $variantSpecs->each(function ($spec) use ($allSpecs) {
-            $allSpecs[$spec->specification_attribute_id] = $spec;
-        });
-
-        return $allSpecs->values();
-    }
-
-    /**
-     * Set a variant-level specification value
-     */
-    public function setSpecificationValue($attributeId, $value)
-    {
-        $specValue = $this->specificationValues()
-            ->where('specification_attribute_id', $attributeId)
-            ->first();
-
-        if (!$specValue) {
-            $specValue = new VariantSpecificationValue([
-                'product_variant_id' => $this->id,
-                'specification_attribute_id' => $attributeId,
-            ]);
-        }
-
-        $specValue->setValue($value);
-        $specValue->save();
-
-        return $specValue;
-    }
-
-    /**
-     * Get a variant-level specification value
-     */
-    public function getSpecificationValue($attributeId)
-    {
-        return $this->specificationValues()
-            ->where('specification_attribute_id', $attributeId)
-            ->first();
-    }
     // ========================================
     // JSON VARIANT HELPER METHODS (Phase 4)
     // ========================================
-    
+
     /**
      * Get variant options from JSON
      */
@@ -554,17 +569,17 @@ class ProductVariant extends Model
     {
         return $this->options ?? [];
     }
-    
+
     /**
      * Get specific option value
      */
     public function getOptionValue(string $key, $default = null)
     {
         $options = $this->getVariantOptions();
-        return isset($options[$key]['value']) ? $options[$key]['value'] : 
+        return isset($options[$key]['value']) ? $options[$key]['value'] :
                (isset($options[$key]) && !is_array($options[$key]) ? $options[$key] : $default);
     }
-    
+
     /**
      * Get option with full details
      */
@@ -573,7 +588,7 @@ class ProductVariant extends Model
         $options = $this->getVariantOptions();
         return $options[$key] ?? null;
     }
-    
+
     /**
      * Check if variant has specific option
      */
@@ -582,7 +597,7 @@ class ProductVariant extends Model
         $options = $this->getVariantOptions();
         return isset($options[$key]);
     }
-    
+
     /**
      * Get effective price (with override if set)
      */
@@ -591,10 +606,10 @@ class ProductVariant extends Model
         if ($this->override_price !== null) {
             return $this->override_price;
         }
-        
+
         return $this->price_cents ?? $this->product->price_cents ?? 0;
     }
-    
+
     /**
      * Get effective price in dollars
      */
@@ -602,7 +617,7 @@ class ProductVariant extends Model
     {
         return $this->getEffectivePrice() / 100;
     }
-    
+
     /**
      * Check if variant has been migrated to JSON system
      */
@@ -610,7 +625,7 @@ class ProductVariant extends Model
     {
         return $this->migrated_to_json === true;
     }
-    
+
     /**
      * Get variant image URL or fallback to product images
      */
@@ -619,34 +634,13 @@ class ProductVariant extends Model
         if ($this->image_url) {
             return $this->image_url;
         }
-        
+
         // Fallback to first product image
         $productImages = $this->product->images ?? [];
         return !empty($productImages) ? $productImages[0] : null;
     }
 
-    
-    /**
-     * Get variant display name based on options
-     */
-    public function getDisplayName(): string
-    {
-        if ($this->name) {
-            return $this->name;
-        }
-        
-        $options = $this->getVariantOptions();
-        if (empty($options)) {
-            return "Variant #{$this->id}";
-        }
-        
-        $displayParts = [];
-        foreach ($options as $key => $value) {
-            $displayValue = is_array($value) ? ($value['value'] ?? $value) : $value;
-            $displayParts[] = $displayValue;
-        }
-        
-        return implode(' - ', $displayParts);
-    }
+
+
 
 }

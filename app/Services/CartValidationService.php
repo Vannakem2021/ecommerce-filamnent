@@ -74,11 +74,13 @@ class CartValidationService
     {
         if ($variantId) {
             $variant = ProductVariant::find($variantId);
-            if ($variant && $variant->price_cents) {
-                return $variant->price_cents / 100;
+            if ($variant && $variant->is_active) {
+                // Use the getFinalPrice method which handles override_price logic
+                return $variant->getFinalPrice();
             }
         }
-        
+
+        // For products without variants, use the product price
         return $product->price ?? 0;
     }
     
@@ -129,6 +131,23 @@ class CartValidationService
      */
     public static function sanitizeCartItem(array $item): array
     {
+        // First validate the structure
+        if (!self::validateCartItemStructure($item)) {
+            // Return a minimal valid structure for invalid items
+            return [
+                'item_key' => '',
+                'product_id' => 0,
+                'variant_id' => null,
+                'name' => '',
+                'image' => '',
+                'variant_attributes' => [],
+                'quantity' => 1,
+                'unit_amount' => 0,
+                'total_amount' => 0,
+                'type' => 'product'
+            ];
+        }
+
         return [
             'item_key' => htmlspecialchars($item['item_key'] ?? '', ENT_QUOTES, 'UTF-8'),
             'product_id' => (int) ($item['product_id'] ?? 0),
@@ -136,11 +155,49 @@ class CartValidationService
             'name' => htmlspecialchars(strip_tags($item['name'] ?? ''), ENT_QUOTES, 'UTF-8'),
             'image' => filter_var($item['image'] ?? '', FILTER_SANITIZE_URL),
             'variant_attributes' => is_array($item['variant_attributes'] ?? null) ? $item['variant_attributes'] : [],
+            'variant_options' => is_array($item['variant_options'] ?? null) ? $item['variant_options'] : [],
             'quantity' => max(1, min(100, (int) ($item['quantity'] ?? 1))),
             'unit_amount' => max(0, (float) ($item['unit_amount'] ?? 0)),
             'total_amount' => max(0, (float) ($item['total_amount'] ?? 0)),
             'type' => in_array($item['type'] ?? '', ['product', 'variant']) ? $item['type'] : 'product'
         ];
+    }
+
+    /**
+     * Validate cart item structure
+     */
+    private static function validateCartItemStructure($item): bool
+    {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $requiredFields = ['product_id', 'quantity', 'unit_amount', 'total_amount'];
+
+        foreach ($requiredFields as $field) {
+            if (!isset($item[$field])) {
+                return false;
+            }
+        }
+
+        // Validate data types
+        if (!is_numeric($item['product_id']) ||
+            !is_numeric($item['quantity']) ||
+            !is_numeric($item['unit_amount']) ||
+            !is_numeric($item['total_amount'])) {
+            return false;
+        }
+
+        // Validate ranges
+        if ($item['quantity'] <= 0 || $item['quantity'] > 100) {
+            return false;
+        }
+
+        if ($item['unit_amount'] < 0 || $item['total_amount'] < 0) {
+            return false;
+        }
+
+        return true;
     }
     
     /**

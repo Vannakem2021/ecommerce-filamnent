@@ -654,7 +654,7 @@ class ElectronicsDataSeeder extends Seeder
                 'compare_price_cents' => $product->compare_price_cents ? $product->compare_price_cents + $priceAdd : null,
                 'cost_price_cents' => $product->cost_price_cents + $costAdd,
                 'stock_quantity' => rand(5, 50),
-                'stock_status' => 'in_stock',
+                // stock_status is now calculated automatically
                 'low_stock_threshold' => 5,
                 'track_inventory' => true,
                 'is_active' => true,

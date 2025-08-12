@@ -113,12 +113,12 @@ class OrderResource extends Resource
 
                         Select::make('currency')
                             ->options([
-                                'inr' => 'INR',
                                 'usd' => 'USD',
+                                'inr' => 'INR',
                                 'EUR' => 'EUR',
                                 'GBP' => 'GBP',
                             ])
-                            ->default('inr')
+                            ->default('usd')
                             ->required(),
 
                         Select::make('shipping_method')
@@ -224,7 +224,7 @@ class OrderResource extends Resource
                     ->label('Grand Total')
                     ->numeric()
                     ->sortable()
-                    ->money('INR'),
+                    ->money('USD'),
 
                 TextColumn::make('payment_method')
                     ->label('Payment Method')

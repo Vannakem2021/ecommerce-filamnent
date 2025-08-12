@@ -119,8 +119,7 @@ class ProductsPage extends Component
                 'brand:id,name,slug',
                 'variants' => function ($query) {
                     $query->where('is_active', true)
-                        ->orderBy('is_default', 'desc')
-                        ->with(['attributeValues.attribute']);
+                        ->orderBy('is_default', 'desc');
                 },
                 'defaultVariant'
             ]);
@@ -145,6 +144,7 @@ class ProductsPage extends Component
         }
 
         if($this->price_range){
+            // Convert USD to cents for filtering
             $products->whereBetween('price_cents', [0, $this->price_range * 100]);
         }
 
