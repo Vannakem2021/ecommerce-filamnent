@@ -141,16 +141,7 @@
             <p>{{ $errorMessage }}</p>
             <a href="{{ route('checkout') }}" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Back to Checkout</a>
 
-            <!-- Debug info for development -->
-            @if(config('app.debug'))
-            <div style="margin-top: 20px; padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; font-size: 12px;">
-                <strong>Debug Info:</strong><br>
-                Session ID: {{ session()->getId() }}<br>
-                Has Payment Data: {{ session('payway_payment_data') ? 'Yes' : 'No' }}<br>
-                Has Order ID: {{ session('payway_order_id') ? 'Yes' : 'No' }}<br>
-                Error: {{ $errorMessage }}
-            </div>
-            @endif
+
         @else
             <div class="spinner"></div>
             <h2>Redirecting to PayWay...</h2>

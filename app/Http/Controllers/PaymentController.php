@@ -23,16 +23,7 @@ class PaymentController extends Controller
         return view('payment.payway-redirect', compact('paymentData', 'orderId'));
     }
 
-    /**
-     * Process ABA Pay payment (redirect to PayWay)
-     * This method is deprecated - use redirectToPayWay instead
-     */
-    public function processAbaPayment()
-    {
-        // Redirect to the correct PayWay flow
-        Log::info('Legacy processAbaPayment called - redirecting to correct flow');
-        return redirect()->route('payment.aba-pay.redirect');
-    }
+
 
     /**
      * Handle ABA Pay return (success)

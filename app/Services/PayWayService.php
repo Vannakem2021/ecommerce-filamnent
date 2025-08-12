@@ -109,17 +109,10 @@ class PayWayService
 
             Log::info('PayWay payment creation started', [
                 'transaction_id' => $paymentData['transaction_id'],
-                'amount' => $paymentData['amount'],
-                'currency' => $paymentData['currency'] ?? 'USD'
+                'amount' => $paymentData['amount']
             ]);
 
             // PayWay expects multipart/form-data for the Purchase API (as per documentation)
-            Log::info('Sending PayWay API request', [
-                'url' => $this->baseUrl . '/api/payment-gateway/v1/payments/purchase',
-                'transaction_id' => $paymentData['transaction_id'],
-                'params_count' => count($params),
-                'hash_length' => strlen($params['hash'] ?? '')
-            ]);
 
             $response = Http::timeout(30)
                 ->asMultipart()
@@ -230,13 +223,7 @@ class PayWayService
             (string) ($params['google_pay_token'] ?? '') .
             (string) ($params['skip_success_page'] ?? '');
 
-        // Log hash generation for debugging
-        Log::debug('PayWay Hash Generation', [
-            'transaction_id' => $params['tran_id'] ?? 'unknown',
-            'b4hash_length' => strlen($b4hash),
-            'b4hash_preview' => substr($b4hash, 0, 100) . '...',
-            'secret_key_length' => strlen($this->secretKey)
-        ]);
+
 
         // Validate secret key
         if (empty($this->secretKey)) {
