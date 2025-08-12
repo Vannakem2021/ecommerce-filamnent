@@ -17,8 +17,6 @@ class CartPage extends Component
 
     public $cart_items = [];
     public $grand_total;
-    public $promo_code = '';
-    public $discount_amount = 0;
     public $tax_rate = 0.08; // 8% tax
     public $shipping_threshold = 50; // Free shipping over $50
 
@@ -26,12 +24,17 @@ class CartPage extends Component
     {
         $this->cart_items = CartManagement::getCartItemsFromCookie();
         $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items);
+
+        // Ensure grand_total is never null
+        if ($this->grand_total === null) {
+            $this->grand_total = 0;
+        }
     }
 
     public function removeItem($item_key)
     {
         $this->cart_items = CartManagement::removeCartItems($item_key);
-        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items);
+        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items) ?? 0;
 
         $this->dispatch('update-cart-count', total_count: CartManagement::calculateTotalQuantity($this->cart_items))->to(Navbar::class);
 
@@ -56,7 +59,7 @@ class CartPage extends Component
         }
 
         $this->cart_items = $result;
-        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items);
+        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items) ?? 0;
 
         $this->dispatch('update-cart-count', total_count: CartManagement::calculateTotalQuantity($this->cart_items))->to(Navbar::class);
 
@@ -70,7 +73,7 @@ class CartPage extends Component
     public function decreaseQuantity($item_key)
     {
         $this->cart_items = CartManagement::decrementQuantityToCartItem($item_key);
-        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items);
+        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items) ?? 0;
 
         $this->dispatch('update-cart-count', total_count: CartManagement::calculateTotalQuantity($this->cart_items))->to(Navbar::class);
 
@@ -81,27 +84,7 @@ class CartPage extends Component
         ]);
     }
 
-    public function applyPromoCode()
-    {
-        $promo_code = strtoupper(trim($this->promo_code));
 
-        if ($promo_code === 'WEEKEND20') {
-            $this->discount_amount = $this->grand_total * 0.20; // 20% discount
-            $this->promo_code = '';
-
-            $this->alert('success', 'Promo code applied! 20% discount', [
-                'position' => 'top-end',
-                'timer' => 3000,
-                'toast' => true,
-            ]);
-        } else {
-            $this->alert('error', 'Invalid promo code', [
-                'position' => 'top-end',
-                'timer' => 3000,
-                'toast' => true,
-            ]);
-        }
-    }
 
     public function addToCart($product_id)
     {
@@ -118,7 +101,7 @@ class CartPage extends Component
         }
 
         $this->cart_items = $result;
-        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items);
+        $this->grand_total = CartManagement::calculateGrandTotal($this->cart_items) ?? 0;
         $total_count = CartManagement::calculateTotalQuantity($this->cart_items);
 
         $this->dispatch('update-cart-count', total_count: $total_count)->to(Navbar::class);
@@ -130,24 +113,56 @@ class CartPage extends Component
         ]);
     }
 
+    /**
+     * Get cart subtotal (before tax and shipping)
+     */
     public function getSubtotal()
     {
-        return $this->grand_total;
+        return $this->grand_total ?? 0;
     }
 
+    /**
+     * Get tax amount based on subtotal
+     */
     public function getTax()
     {
-        return $this->grand_total * $this->tax_rate;
+        return round($this->getSubtotal() * $this->tax_rate, 2);
     }
 
+    /**
+     * Get shipping cost (free shipping over threshold)
+     */
     public function getShipping()
     {
-        return $this->grand_total >= $this->shipping_threshold ? 0 : 9.99;
+        return $this->getSubtotal() >= $this->shipping_threshold ? 0 : 9.99;
     }
 
+    /**
+     * Get final total including tax and shipping
+     */
     public function getFinalTotal()
     {
-        return $this->grand_total + $this->getTax() + $this->getShipping() - $this->discount_amount;
+        $subtotal = $this->getSubtotal();
+        $tax = $this->getTax();
+        $shipping = $this->getShipping();
+
+        return round($subtotal + $tax + $shipping, 2);
+    }
+
+    /**
+     * Get tax amount for display
+     */
+    public function getTaxAmount()
+    {
+        return $this->getTax();
+    }
+
+    /**
+     * Get shipping amount for display
+     */
+    public function getShippingAmount()
+    {
+        return $this->getShipping();
     }
 
     public function getRecommendedProducts()

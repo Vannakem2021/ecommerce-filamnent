@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Helpers\CartManagement;
 use App\Models\Address;
+use App\Models\InventoryReservation;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -44,8 +45,11 @@ class OrderService
             
             // 8. Clear cart
             CartManagement::clearCartItems();
-            
-            // 9. Send confirmation email (placeholder)
+
+            // 9. Release inventory reservations
+            $this->releaseInventoryReservations();
+
+            // 10. Send confirmation email (placeholder)
             $this->sendOrderConfirmation($order);
             
             return $order->load(['items.product', 'items.variant', 'address']);
@@ -53,42 +57,64 @@ class OrderService
     }
     
     /**
-     * Validate inventory for all cart items
+     * Validate inventory for all cart items with atomic reservations
      */
     protected function validateCartInventory(array $cartItems): void
     {
-        foreach ($cartItems as $item) {
-            $this->validateItemInventory($item);
-        }
+        DB::transaction(function () use ($cartItems) {
+            // Clean expired reservations first
+            $this->cleanExpiredReservations();
+
+            foreach ($cartItems as $item) {
+                $this->validateAndReserveInventory($item);
+            }
+        });
     }
-    
+
     /**
-     * Validate inventory for a single cart item
+     * Validate and reserve inventory atomically for a single cart item
      */
-    protected function validateItemInventory(array $item): void
+    protected function validateAndReserveInventory(array $item): void
     {
         $productId = $item['product_id'];
         $variantId = $item['variant_id'] ?? null;
         $quantity = $item['quantity'];
-        
+
         if ($variantId) {
-            $variant = ProductVariant::find($variantId);
+            $variant = ProductVariant::lockForUpdate()->find($variantId);
             if (!$variant) {
                 throw new Exception("Product variant not found: {$variantId}");
             }
-            
-            if ($variant->track_inventory && $variant->stock_quantity < $quantity) {
-                throw new Exception("Insufficient stock for {$variant->name}. Available: {$variant->stock_quantity}, Requested: {$quantity}");
+
+            // Check available stock (current stock - existing reservations)
+            $reservedQuantity = $this->getReservedQuantity($productId, $variantId);
+            $availableStock = $variant->stock_quantity - $reservedQuantity;
+
+            if ($availableStock < $quantity) {
+                throw new Exception("Insufficient stock for {$variant->sku}. Available: {$availableStock}, Requested: {$quantity}");
             }
+
+            // Create reservation
+            $this->createInventoryReservation($productId, $variantId, $quantity);
+
         } else {
-            $product = Product::find($productId);
+            $product = Product::lockForUpdate()->find($productId);
             if (!$product) {
                 throw new Exception("Product not found: {$productId}");
             }
-            
-            if ($product->track_inventory && $product->stock_quantity < $quantity) {
-                throw new Exception("Insufficient stock for {$product->name}. Available: {$product->stock_quantity}, Requested: {$quantity}");
+
+            if ($product->has_variants) {
+                throw new Exception("Product has variants but no variant selected");
             }
+
+            $reservedQuantity = $this->getReservedQuantity($productId, null);
+            $availableStock = $product->stock_quantity - $reservedQuantity;
+
+            if ($availableStock < $quantity) {
+                throw new Exception("Insufficient stock for {$product->name}. Available: {$availableStock}, Requested: {$quantity}");
+            }
+
+            $this->createInventoryReservation($productId, null, $quantity);
         }
     }
     
@@ -173,13 +199,16 @@ class OrderService
     {
         Address::create([
             'order_id' => $order->id,
-            'first_name' => $addressData['first_name'],
-            'last_name' => $addressData['last_name'],
-            'phone' => $addressData['phone'],
-            'street_address' => $addressData['street_address'],
-            'city' => $addressData['city'],
-            'state' => $addressData['state'] ?? null,
-            'zip_code' => $addressData['zip_code'],
+            'type' => 'shipping',
+            'contact_name' => $addressData['contact_name'],
+            'phone_number' => $addressData['phone_number'],
+            'house_number' => $addressData['house_number'] ?? null,
+            'street_number' => $addressData['street_number'] ?? null,
+            'city_province' => $addressData['city_province'],
+            'district_khan' => $addressData['district_khan'],
+            'commune_sangkat' => $addressData['commune_sangkat'],
+            'postal_code' => $addressData['postal_code'],
+            'additional_info' => $addressData['additional_info'] ?? null,
         ]);
     }
     
@@ -286,5 +315,45 @@ class OrderService
             Log::error("Failed to send order confirmation email for order {$order->id}: " . $e->getMessage());
             // Don't throw exception here as order is already created
         }
+    }
+
+    /**
+     * Get reserved quantity for a product/variant
+     */
+    protected function getReservedQuantity($productId, $variantId = null): int
+    {
+        return InventoryReservation::active()
+            ->forProduct($productId, $variantId)
+            ->sum('quantity');
+    }
+
+    /**
+     * Create inventory reservation
+     */
+    protected function createInventoryReservation($productId, $variantId, $quantity): void
+    {
+        InventoryReservation::createReservation(
+            session()->getId(),
+            $productId,
+            $variantId,
+            $quantity,
+            15 // 15-minute reservation
+        );
+    }
+
+    /**
+     * Clean expired reservations
+     */
+    protected function cleanExpiredReservations(): void
+    {
+        InventoryReservation::cleanupExpired();
+    }
+
+    /**
+     * Release inventory reservations for current session
+     */
+    protected function releaseInventoryReservations(): void
+    {
+        InventoryReservation::releaseForSession(session()->getId());
     }
 }

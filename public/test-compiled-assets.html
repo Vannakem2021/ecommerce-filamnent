@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Compiled Assets - Cambodia Address Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        select, input { padding: 8px; margin: 5px; width: 200px; }
+        .form-group { margin: 10px 0; }
+        label { display: block; margin-bottom: 5px; }
+        .text-red-500 { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Test Compiled Assets - Cambodia Address Form</h1>
+    <p>This test uses the compiled app.js which should include the Cambodia Address Form.</p>
+    
+    <div class="form-group">
+        <label>City/Province:</label>
+        <select id="city_province">
+            <option value="">Select Province/City</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>District/Khan:</label>
+        <select id="district_khan" disabled>
+            <option value="">Select District</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Commune/Sangkat:</label>
+        <select id="commune_sangkat" disabled>
+            <option value="">Select Commune</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Postal Code:</label>
+        <input type="text" id="postal_code" readonly placeholder="Auto-filled">
+    </div>
+    
+    <div id="debug-info">
+        <h3>Debug Information:</h3>
+        <p id="cambodia-form-status">Checking for CambodiaAddressForm...</p>
+        <p id="initialization-status">Checking initialization...</p>
+    </div>
+    
+    <!-- Include the compiled CSS and JS which should contain the Cambodia Address Form -->
+    <link rel="stylesheet" href="/build/assets/app-BMMjvFhK.css">
+    <script type="module" src="/build/assets/app-CGnHwORj.js"></script>
+    
+    <script>
+        console.log('Testing compiled assets...');
+        
+        // Check if CambodiaAddressForm is available
+        setTimeout(() => {
+            const statusEl = document.getElementById('cambodia-form-status');
+            const initStatusEl = document.getElementById('initialization-status');
+            
+            if (window.CambodiaAddressForm) {
+                statusEl.textContent = '✅ CambodiaAddressForm class is available';
+                statusEl.style.color = 'green';
+                
+                // Check if it was auto-initialized
+                if (window.cambodiaAddressForm) {
+                    initStatusEl.textContent = '✅ Cambodia Address Form was auto-initialized';
+                    initStatusEl.style.color = 'green';
+                } else {
+                    initStatusEl.textContent = '⚠️ CambodiaAddressForm class exists but not auto-initialized. Trying manual init...';
+                    initStatusEl.style.color = 'orange';
+                    
+                    // Try manual initialization
+                    try {
+                        window.testAddressForm = new window.CambodiaAddressForm();
+                        initStatusEl.textContent = '✅ Manual initialization successful';
+                        initStatusEl.style.color = 'green';
+                    } catch (error) {
+                        initStatusEl.textContent = '❌ Manual initialization failed: ' + error.message;
+                        initStatusEl.style.color = 'red';
+                    }
+                }
+            } else {
+                statusEl.textContent = '❌ CambodiaAddressForm class not found in compiled assets';
+                statusEl.style.color = 'red';
+                initStatusEl.textContent = '❌ Cannot initialize - class not available';
+                initStatusEl.style.color = 'red';
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

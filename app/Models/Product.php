@@ -13,6 +13,7 @@ class Product extends Model
     protected $table = "products";
 
     protected $fillable = [
+        // Core product fields
         'category_id',
         'brand_id',
         'name',
@@ -20,25 +21,23 @@ class Product extends Model
         'images',
         'description',
         'short_description',
-        'price',
+
+        // Simple pricing (base price for variants)
         'price_cents',
-        'compare_price_cents',
-        'cost_price_cents',
+
+        // Simple inventory (for non-variant products)
         'sku',
         'stock_quantity',
-        'stock_status',
-        'low_stock_threshold',
-        'track_inventory',
+
+        // Simple variant support
         'has_variants',
-        'variant_type',
-        'variant_attributes',
-        'attributes', // New JSON column for simplified attributes
-        'variant_config',
-        'migrated_to_json',
+
+        // Status fields
         'is_active',
         'is_featured',
-        'in_stock',
         'on_sale',
+
+        // SEO fields
         'meta_title',
         'meta_description',
         'meta_keywords',
@@ -59,7 +58,6 @@ class Product extends Model
         'has_variants' => 'boolean',
         'is_active' => 'boolean',
         'is_featured' => 'boolean',
-        'in_stock' => 'boolean',
         'on_sale' => 'boolean',
     ];
 
@@ -78,9 +76,9 @@ class Product extends Model
         });
 
         static::saving(function ($product) {
-            // Ensure price_cents is set when price is provided
-            if (($product->isDirty('price') || !$product->exists) && $product->price !== null) {
-                $product->price_cents = round($product->price * 100);
+            // Ensure price_cents is always set (required field)
+            if ($product->isDirty('price') || !$product->exists) {
+                $product->price_cents = round(($product->price ?? 0) * 100);
             }
 
             // Ensure compare_price_cents is set when compare_price is provided
@@ -91,6 +89,11 @@ class Product extends Model
             // Ensure cost_price_cents is set when cost_price is provided
             if (($product->isDirty('cost_price') || !$product->exists) && $product->cost_price !== null) {
                 $product->cost_price_cents = round($product->cost_price * 100);
+            }
+
+            // Validate stock quantity
+            if ($product->stock_quantity < 0) {
+                throw new \InvalidArgumentException('Stock quantity cannot be negative');
             }
         });
 
@@ -362,6 +365,54 @@ class Product extends Model
         $this->updateStockStatus();
     }
 
+    /**
+     * Validate stock configuration for this product
+     *
+     * @return array Array of validation errors (empty if valid)
+     */
+    public function validateStockConfiguration(): array
+    {
+        $errors = [];
+
+        if ($this->has_variants) {
+            // Products with variants should not track inventory at product level
+            if ($this->track_inventory) {
+                $errors[] = 'Products with variants should not track inventory at product level';
+            }
+
+            if ($this->stock_quantity > 0) {
+                $errors[] = 'Products with variants should have zero product-level stock';
+            }
+
+            // Check if all active variants track inventory
+            $variantsWithoutTracking = $this->variants()
+                ->where('is_active', true)
+                ->where('track_inventory', false)
+                ->count();
+
+            if ($variantsWithoutTracking > 0) {
+                $errors[] = "Product has {$variantsWithoutTracking} active variants not tracking inventory";
+            }
+        } else {
+            // Products without variants should track inventory at product level
+            if (!$this->track_inventory) {
+                $errors[] = 'Products without variants should track inventory at product level';
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Check if stock configuration is valid
+     *
+     * @return bool
+     */
+    public function hasValidStockConfiguration(): bool
+    {
+        return empty($this->validateStockConfiguration());
+    }
+
     // ===== VARIANT-RELATED METHODS =====
 
     /**
@@ -393,48 +444,30 @@ class Product extends Model
     }
 
     /**
-     * Get the effective stock quantity (sum of all variants or product stock)
+     * Get the effective stock quantity (uses unified InventoryService)
+     * @deprecated Use InventoryService::getTotalStock() instead
      */
     public function getEffectiveStockQuantityAttribute()
     {
-        if ($this->has_variants) {
-            return $this->activeVariants()->sum('stock_quantity');
-        }
-
-        return $this->stock_quantity;
+        return $this->getTotalStock();
     }
 
     /**
-     * Get the effective stock status
+     * Get the effective stock status (uses unified InventoryService)
+     * @deprecated Use InventoryService::getStockStatus() instead
      */
     public function getEffectiveStockStatusAttribute()
     {
-        if ($this->has_variants) {
-            $inStockVariants = $this->activeVariants()->where('stock_status', 'in_stock')->count();
-            $totalVariants = $this->activeVariants()->count();
-
-            if ($inStockVariants === 0) {
-                return 'out_of_stock';
-            } elseif ($inStockVariants < $totalVariants) {
-                return 'partial_stock';
-            } else {
-                return 'in_stock';
-            }
-        }
-
-        return $this->stock_status;
+        return $this->getStockStatus();
     }
 
     /**
-     * Check if product has any variants in stock
+     * Check if product has any variants in stock (uses unified InventoryService)
+     * @deprecated Use InventoryService::hasStock() instead
      */
     public function getHasStockAttribute()
     {
-        if ($this->has_variants) {
-            return $this->activeVariants()->where('stock_status', 'in_stock')->exists();
-        }
-
-        return $this->stock_status === 'in_stock';
+        return $this->hasStock();
     }
 
     /**
@@ -485,7 +518,7 @@ class Product extends Model
             return [
                 'min' => $this->price ?? 0,
                 'max' => $this->price ?? 0,
-                'formatted' => '₹' . number_format($this->price ?? 0, 2)
+                'formatted' => '$' . number_format($this->price ?? 0, 2)
             ];
         }
 
@@ -497,14 +530,14 @@ class Product extends Model
                 'min' => $lowest,
                 'max' => $highest,
                 'formatted' => $lowest === $highest
-                    ? '₹' . number_format($lowest, 2)
-                    : '₹' . number_format($lowest, 2) . ' - ₹' . number_format($highest, 2)
+                    ? '$' . number_format($lowest, 2)
+                    : '$' . number_format($lowest, 2) . ' - $' . number_format($highest, 2)
             ];
         } catch (Exception $e) {
             return [
                 'min' => $this->price ?? 0,
                 'max' => $this->price ?? 0,
-                'formatted' => '₹' . number_format($this->price ?? 0, 2)
+                'formatted' => '$' . number_format($this->price ?? 0, 2)
             ];
         }
     }
@@ -660,41 +693,50 @@ class Product extends Model
 
     /**
      * Get total stock across all variants
+     * Uses unified InventoryService for consistency
      */
     public function getTotalStock()
     {
-        if (!$this->has_variants) {
-            return $this->stock_quantity;
-        }
-
-        $variantStock = $this->variants()->sum('stock_quantity');
-
-        // Fallback to product stock if no variants exist (edge case)
-        if ($variantStock === 0 && $this->variants()->count() === 0) {
-            return $this->stock_quantity;
-        }
-
-        return $variantStock;
+        return \App\Services\InventoryService::getTotalStock($this);
     }
 
     /**
      * Check if product has any stock available
+     * Uses unified InventoryService for consistency
      */
     public function hasStock()
     {
-        if (!$this->has_variants) {
-            return $this->stock_quantity > 0;
-        }
-
-        $variantStock = $this->variants()->sum('stock_quantity');
-
-        // Fallback to product stock if no variants exist (edge case)
-        if ($variantStock === 0 && $this->variants()->count() === 0) {
-            return $this->stock_quantity > 0;
-        }
-
-        return $variantStock > 0;
+        return \App\Services\InventoryService::hasStock($this);
     }
+
+    /**
+     * Get stock status for this product
+     * Uses unified InventoryService for consistency
+     */
+    public function getStockStatus()
+    {
+        return \App\Services\InventoryService::getStockStatus($this);
+    }
+
+    /**
+     * Check if product is low stock
+     * Uses unified InventoryService for consistency
+     */
+    public function isLowStock()
+    {
+        return \App\Services\InventoryService::isLowStock($this);
+    }
+
+    /**
+     * Get calculated stock status (accessor)
+     * This makes stock_status always calculated, never manually set
+     */
+    public function getStockStatusAttribute()
+    {
+        return $this->getStockStatus();
+    }
+
+
 
     /**
      * Get the cheapest variant - SIMPLIFIED PRICING
@@ -797,7 +839,7 @@ class Product extends Model
     // ========================================
     // JSON VARIANT HELPER METHODS (Phase 4)
     // ========================================
-    
+
     /**
      * Get variant configuration from JSON
      */
@@ -805,7 +847,7 @@ class Product extends Model
     {
         return $this->variant_config ?? [];
     }
-    
+
     /**
      * Get product attributes from JSON
      */
@@ -813,7 +855,7 @@ class Product extends Model
     {
         return $this->attributes ?? [];
     }
-    
+
     /**
      * Check if product has been migrated to JSON system
      */
@@ -821,7 +863,7 @@ class Product extends Model
     {
         return $this->migrated_to_json === true;
     }
-    
+
     /**
      * Get variant count from configuration
      */
@@ -830,10 +872,96 @@ class Product extends Model
         $config = $this->getVariantConfiguration();
         return $config['variant_count'] ?? $this->variants()->count();
     }
-    
 
 
 
 
 
+
+
+    // ===========================================
+    // SIMPLE VARIANT METHODS FOR COLOR+STORAGE
+    // ===========================================
+
+    /**
+     * Add a simple variant with Color and Storage
+     */
+    public function addVariant(string $color, string $storage, int $priceModifier = 0, int $stock = 10): ProductVariant
+    {
+        $basePrice = $this->price_cents ?? 0;
+        $finalPrice = $priceModifier > 0 ? $basePrice + $priceModifier : ($basePrice > 0 ? $basePrice : null);
+
+        return $this->variants()->create([
+            'options' => ['Color' => $color, 'Storage' => $storage],
+            'override_price' => $finalPrice,
+            'stock_quantity' => $stock,
+            'sku' => $this->generateVariantSku($color, $storage),
+            'is_active' => true
+        ]);
+    }
+
+    /**
+     * Get available colors for this product
+     */
+    public function getAvailableColors(): array
+    {
+        if (!$this->has_variants) {
+            return [];
+        }
+
+        return $this->variants()
+            ->where('is_active', true)
+            ->get()
+            ->pluck('options')
+            ->map(fn($options) => $options['Color'] ?? null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Get available storage options for this product
+     */
+    public function getAvailableStorage(): array
+    {
+        if (!$this->has_variants) {
+            return [];
+        }
+
+        return $this->variants()
+            ->where('is_active', true)
+            ->get()
+            ->pluck('options')
+            ->map(fn($options) => $options['Storage'] ?? null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Find variant by color and storage
+     */
+    public function findVariant(string $color, string $storage): ?ProductVariant
+    {
+        return $this->variants()
+            ->where('is_active', true)
+            ->get()
+            ->first(function ($variant) use ($color, $storage) {
+                $options = $variant->options ?? [];
+                return ($options['Color'] ?? null) === $color &&
+                       ($options['Storage'] ?? null) === $storage;
+            });
+    }
+
+    /**
+     * Generate SKU for variant
+     */
+    private function generateVariantSku(string $color, string $storage): string
+    {
+        $colorCode = strtoupper(substr($color, 0, 3));
+        $storageCode = str_replace('GB', '', $storage);
+        return "{$this->sku}-{$colorCode}-{$storageCode}";
+    }
 }

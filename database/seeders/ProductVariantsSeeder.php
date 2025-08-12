@@ -72,7 +72,7 @@ class ProductVariantsSeeder extends Seeder
                     'compare_price_cents' => 129999 + $storagePriceCents,
                     'cost_price_cents' => 80000 + ($storagePriceCents * 0.6),
                     'stock_quantity' => rand(5, 25),
-                    'stock_status' => 'in_stock',
+                    // stock_status is now calculated automatically
                     'low_stock_threshold' => 5,
                     'track_inventory' => true,
                     'is_active' => true,
@@ -124,7 +124,7 @@ class ProductVariantsSeeder extends Seeder
                 'price_cents' => 149999,
                 'cost_price_cents' => 100000,
                 'stock_quantity' => rand(3, 15),
-                'stock_status' => 'in_stock',
+                // stock_status is now calculated automatically
                 'low_stock_threshold' => 3,
                 'track_inventory' => true,
                 'is_active' => true,
@@ -156,7 +156,7 @@ class ProductVariantsSeeder extends Seeder
             'compare_price_cents' => 29999, // $299.99
             'cost_price_cents' => 15000, // $150.00
             'stock_quantity' => 50,
-            'stock_status' => 'in_stock',
+            // stock_status is now calculated automatically
             'low_stock_threshold' => 10,
             'track_inventory' => true,
             'has_variants' => false,

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Livewire Simulation - Cambodia Address Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        select, input { padding: 8px; margin: 5px; width: 200px; }
+        .form-group { margin: 10px 0; }
+        label { display: block; margin-bottom: 5px; }
+        .text-red-500 { color: red; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Test Livewire Simulation - Cambodia Address Form</h1>
+    <p>This test simulates the exact Livewire checkout page environment with wire:model attributes.</p>
+    
+    <div class="form-group">
+        <label>City/Province:</label>
+        <select id="city_province" wire:model="city_province">
+            <option value="">Select Province/City</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>District/Khan:</label>
+        <select id="district_khan" wire:model="district_khan" disabled>
+            <option value="">Select District</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Commune/Sangkat:</label>
+        <select id="commune_sangkat" wire:model="commune_sangkat" disabled>
+            <option value="">Select Commune</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label>Postal Code:</label>
+        <input type="text" id="postal_code" wire:model="postal_code" readonly placeholder="Auto-filled">
+    </div>
+    
+    <div class="debug">
+        <h3>Debug Information:</h3>
+        <p id="status">Initializing...</p>
+        <p id="api-status">API Status: Not tested</p>
+        <p id="livewire-events">Livewire Events: None</p>
+    </div>
+    
+    <!-- Simulate Livewire by listening to events -->
+    <script>
+        // Simulate Livewire wire:model behavior
+        const livewireData = {
+            city_province: '',
+            district_khan: '',
+            commune_sangkat: '',
+            postal_code: ''
+        };
+        
+        // Listen for changes and update our "Livewire" data
+        document.addEventListener('change', function(e) {
+            if (e.target.hasAttribute('wire:model')) {
+                const property = e.target.getAttribute('wire:model');
+                livewireData[property] = e.target.value;
+                console.log('Livewire data updated:', property, '=', e.target.value);
+                document.getElementById('livewire-events').textContent = 
+                    `Last update: ${property} = "${e.target.value}"`;
+            }
+        });
+        
+        document.addEventListener('input', function(e) {
+            if (e.target.hasAttribute('wire:model')) {
+                const property = e.target.getAttribute('wire:model');
+                livewireData[property] = e.target.value;
+                console.log('Livewire data updated (input):', property, '=', e.target.value);
+                document.getElementById('livewire-events').textContent = 
+                    `Last input: ${property} = "${e.target.value}"`;
+            }
+        });
+        
+        // Test API connectivity
+        fetch('/api/addresses/provinces')
+            .then(response => {
+                if (response.ok) {
+                    document.getElementById('api-status').textContent = 'API Status: ✅ Connected';
+                    document.getElementById('api-status').style.color = 'green';
+                    return response.json();
+                } else {
+                    throw new Error('API not available');
+                }
+            })
+            .then(data => {
+                console.log('API test successful, provinces:', data.length);
+            })
+            .catch(error => {
+                document.getElementById('api-status').textContent = 'API Status: ❌ Not available (expected in static test)';
+                document.getElementById('api-status').style.color = 'orange';
+            });
+    </script>
+    
+    <!-- Include the compiled app.js which should contain the Cambodia Address Form -->
+    <link rel="stylesheet" href="/build/assets/app-BMMjvFhK.css">
+    <script type="module" src="/build/assets/app-Cj6e0yj7.js"></script>
+    
+    <script>
+        // Check initialization after a delay
+        setTimeout(() => {
+            const statusEl = document.getElementById('status');
+            
+            if (window.CambodiaAddressForm) {
+                statusEl.textContent = '✅ CambodiaAddressForm class loaded';
+                statusEl.style.color = 'green';
+                
+                if (window.cambodiaAddressForm) {
+                    statusEl.textContent += ' and auto-initialized';
+                } else {
+                    statusEl.textContent += ' but not auto-initialized';
+                }
+            } else {
+                statusEl.textContent = '❌ CambodiaAddressForm class not found';
+                statusEl.style.color = 'red';
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

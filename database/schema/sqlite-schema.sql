@@ -190,7 +190,6 @@ CREATE TABLE IF NOT EXISTS "products"(
   "price" numeric,
   "is_active" tinyint(1) not null default('1'),
   "is_featured" tinyint(1) not null default('0'),
-  "in_stock" tinyint(1) not null default('1'),
   "on_sale" tinyint(1) not null default('0'),
   "created_at" datetime,
   "updated_at" datetime,
@@ -219,50 +218,6 @@ CREATE UNIQUE INDEX "products_slug_unique" on "products"("slug");
 CREATE INDEX "products_price_cents_index" on "products"("price_cents");
 CREATE INDEX "products_stock_quantity_index" on "products"("stock_quantity");
 CREATE INDEX "products_stock_status_index" on "products"("stock_status");
-CREATE TABLE IF NOT EXISTS "product_variants"(
-  "id" integer primary key autoincrement not null,
-  "product_id" integer not null,
-  "sku" varchar not null,
-  "name" varchar,
-  "price_cents" integer not null,
-  "compare_price_cents" integer,
-  "cost_price_cents" integer,
-  "stock_quantity" integer not null default '0',
-  "stock_status" varchar check("stock_status" in('in_stock', 'out_of_stock', 'back_order')) not null default 'in_stock',
-  "low_stock_threshold" integer not null default '5',
-  "track_inventory" tinyint(1) not null default '1',
-  "weight" numeric,
-  "dimensions" text,
-  "barcode" varchar,
-  "images" text,
-  "is_active" tinyint(1) not null default '1',
-  "is_default" tinyint(1) not null default '0',
-  "created_at" datetime,
-  "updated_at" datetime,
-  "options" text,
-  "image_url" varchar,
-  "override_price" integer,
-  "migrated_to_json" tinyint(1) not null default '0',
-  foreign key("product_id") references "products"("id") on delete cascade
-);
-CREATE INDEX "product_variants_product_id_is_default_index" on "product_variants"(
-  "product_id",
-  "is_default"
-);
-CREATE UNIQUE INDEX "product_variants_sku_unique" on "product_variants"("sku");
-CREATE INDEX "product_variants_price_cents_index" on "product_variants"(
-  "price_cents"
-);
-CREATE INDEX "product_variants_stock_quantity_index" on "product_variants"(
-  "stock_quantity"
-);
-CREATE INDEX "product_variants_stock_status_index" on "product_variants"(
-  "stock_status"
-);
-CREATE INDEX "product_variants_barcode_index" on "product_variants"("barcode");
-CREATE INDEX "product_variants_is_default_index" on "product_variants"(
-  "is_default"
-);
 CREATE INDEX "products_has_variants_index" on "products"("has_variants");
 CREATE TABLE IF NOT EXISTS "order_items"(
   "id" integer primary key autoincrement not null,
@@ -283,21 +238,6 @@ CREATE TABLE IF NOT EXISTS "order_items"(
 CREATE INDEX "order_items_product_id_product_variant_id_index" on "order_items"(
   "product_id",
   "product_variant_id"
-);
-CREATE INDEX "idx_variants_product_price" on "product_variants"(
-  "product_id",
-  "is_active",
-  "price_cents"
-);
-CREATE INDEX "idx_variants_stock" on "product_variants"(
-  "is_active",
-  "stock_status",
-  "stock_quantity"
-);
-CREATE INDEX "idx_variants_default" on "product_variants"(
-  "product_id",
-  "is_default",
-  "is_active"
 );
 CREATE INDEX "idx_products_listing" on "products"(
   "is_active",
@@ -387,6 +327,73 @@ CREATE INDEX "variant_migration_audit_batch_id_index" on "variant_migration_audi
 CREATE INDEX "variant_migration_audit_started_at_index" on "variant_migration_audit"(
   "started_at"
 );
+CREATE TABLE IF NOT EXISTS "product_variants"(
+  "id" integer primary key autoincrement not null,
+  "product_id" integer not null,
+  "sku" varchar not null,
+  "name" varchar,
+  "price_cents" integer,
+  "compare_price_cents" integer,
+  "cost_price_cents" integer,
+  "stock_quantity" integer not null default('0'),
+  "stock_status" varchar not null default('in_stock'),
+  "low_stock_threshold" integer not null default('5'),
+  "track_inventory" tinyint(1) not null default('1'),
+  "weight" numeric,
+  "dimensions" text,
+  "barcode" varchar,
+  "images" text,
+  "is_active" tinyint(1) not null default('1'),
+  "is_default" tinyint(1) not null default('0'),
+  "created_at" datetime,
+  "updated_at" datetime,
+  "options" text,
+  "image_url" varchar,
+  "override_price" integer,
+  "migrated_to_json" tinyint(1) not null default('0'),
+  foreign key("product_id") references products("id") on delete cascade on update no action
+);
+CREATE INDEX "idx_variants_default" on "product_variants"(
+  "product_id",
+  "is_default",
+  "is_active"
+);
+CREATE INDEX "idx_variants_product_price" on "product_variants"(
+  "product_id",
+  "is_active",
+  "price_cents"
+);
+CREATE INDEX "idx_variants_stock" on "product_variants"(
+  "is_active",
+  "stock_status",
+  "stock_quantity"
+);
+CREATE INDEX "product_variants_barcode_index" on "product_variants"("barcode");
+CREATE INDEX "product_variants_is_default_index" on "product_variants"(
+  "is_default"
+);
+CREATE INDEX "product_variants_price_cents_index" on "product_variants"(
+  "price_cents"
+);
+CREATE INDEX "product_variants_product_id_is_default_index" on "product_variants"(
+  "product_id",
+  "is_default"
+);
+CREATE UNIQUE INDEX "product_variants_sku_unique" on "product_variants"("sku");
+CREATE INDEX "product_variants_stock_quantity_index" on "product_variants"(
+  "stock_quantity"
+);
+CREATE INDEX "product_variants_stock_status_index" on "product_variants"(
+  "stock_status"
+);
+CREATE INDEX "products_active_stock_index" on "products"(
+  "is_active",
+  "stock_quantity"
+);
+CREATE INDEX "product_variants_active_stock_index" on "product_variants"(
+  "is_active",
+  "stock_quantity"
+);
 
 INSERT INTO migrations VALUES(1,'0001_01_01_000000_create_users_table',1);
 INSERT INTO migrations VALUES(2,'0001_01_01_000001_create_cache_table',1);
@@ -423,3 +430,6 @@ INSERT INTO migrations VALUES(32,'2025_08_10_160234_enhance_products_for_json_at
 INSERT INTO migrations VALUES(33,'2025_08_10_160243_enhance_product_variants_for_json_options',9);
 INSERT INTO migrations VALUES(34,'2025_08_10_160248_create_variant_migration_audit',9);
 INSERT INTO migrations VALUES(35,'2025_08_10_162014_drop_legacy_variant_tables',9);
+INSERT INTO migrations VALUES(36,'2025_08_11_074851_make_price_cents_nullable_in_product_variants_table',10);
+INSERT INTO migrations VALUES(37,'2025_08_11_094225_remove_in_stock_field_from_products_table',10);
+INSERT INTO migrations VALUES(38,'2025_08_11_095416_add_basic_inventory_indexes',10);

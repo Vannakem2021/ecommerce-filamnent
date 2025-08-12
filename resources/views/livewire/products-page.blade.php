@@ -74,20 +74,20 @@
                         <h3 class="font-semibold text-gray-900 mb-3">Price Range</h3>
                         <div class="space-y-4">
                             <div class="text-center">
-                                <span class="font-semibold text-custom-teal-700">{{ Number::currency($price_range, 'INR') }}</span>
+                                <span class="font-semibold text-custom-teal-700">{{ Number::currency($price_range, 'USD') }}</span>
                             </div>
                             <div class="relative">
                                 <input
                                     type="range"
                                     wire:model.live="price_range"
                                     class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-custom-teal-600"
-                                    max="500000"
+                                    max="5000"
                                     value="0"
-                                    step="1000"
+                                    step="10"
                                 >
                                 <div class="flex justify-between text-xs text-gray-500 mt-1">
-                                    <span>{{ Number::currency(1000, 'INR') }}</span>
-                                    <span>{{ Number::currency(500000, 'INR') }}</span>
+                                    <span>{{ Number::currency(10, 'USD') }}</span>
+                                    <span>{{ Number::currency(5000, 'USD') }}</span>
                                 </div>
                             </div>
                         </div>

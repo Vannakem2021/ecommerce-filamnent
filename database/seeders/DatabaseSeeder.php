@@ -28,5 +28,8 @@ class DatabaseSeeder extends Seeder
 
         // Seed e-commerce data
         $this->call(EcommerceSeeder::class);
+
+        // Seed simplified variant test data
+        $this->call(SimplifiedVariantTestSeeder::class);
     }
 }

@@ -5,6 +5,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Services\CartValidationService;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\Log;
 
 class CartManagement {
 
@@ -29,6 +30,12 @@ class CartManagement {
         // Check permissions and rate limiting
         if (!CartValidationService::validateCartPermissions('add_to_cart', auth()->id())) {
             return ['error' => 'Too many cart operations. Please try again later.'];
+        }
+
+        // NEW: Validate item data before adding to cart
+        $validationResult = self::validateItemData($item_id, $quantity, $type, $variant_options, $product_id);
+        if (!$validationResult['valid']) {
+            return ['error' => $validationResult['message']];
         }
 
         $cart_items = self::getCartItemsFromCookie();
@@ -132,18 +139,36 @@ class CartManagement {
     // get all cart items from cookie with validation
     static public function getCartItemsFromCookie()
     {
-        $cart_items = json_decode(Cookie::get('cart_items'), true);
-        if (!$cart_items) {
-            $cart_items = [];
-        }
+        try {
+            $cartData = Cookie::get('cart_items');
 
-        // Sanitize cart items for security
-        $sanitized_items = [];
-        foreach ($cart_items as $item) {
-            $sanitized_items[] = CartValidationService::sanitizeCartItem($item);
-        }
+            if (empty($cartData)) {
+                return [];
+            }
 
-        return $sanitized_items;
+            $cart_items = json_decode($cartData, true);
+
+            // Validate JSON decode success
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Log::warning('Invalid cart JSON data', ['error' => json_last_error_msg()]);
+                self::clearCartItems(); // Clear corrupted cart
+                return [];
+            }
+
+            if (!is_array($cart_items)) {
+                Log::warning('Cart data is not an array');
+                self::clearCartItems();
+                return [];
+            }
+
+            // Sanitize and validate cart items
+            return self::validateAndCorrectCartItems($cart_items);
+
+        } catch (\Exception $e) {
+            Log::error('Cart retrieval error', ['error' => $e->getMessage()]);
+            self::clearCartItems();
+            return [];
+        }
     }
 
     // get validated cart items (server-side price verification)
@@ -154,7 +179,7 @@ class CartManagement {
 
         if (!$validation['valid']) {
             // Log validation errors for security monitoring
-            \Log::warning('Cart validation failed', [
+            Log::warning('Cart validation failed', [
                 'user_id' => auth()->id(),
                 'ip' => request()->ip(),
                 'errors' => $validation['errors']
@@ -246,7 +271,93 @@ class CartManagement {
         return $base_key;
     }
 
-    // Get item data (product or variant) - SIMPLIFIED PRICING
+    // NEW METHOD: Validate item data before adding to cart
+    static private function validateItemData($item_id, $quantity, $type, $variant_options, $product_id)
+    {
+        // Validate quantity
+        if ($quantity <= 0 || $quantity > 100) {
+            return ['valid' => false, 'message' => 'Invalid quantity. Must be between 1 and 100.'];
+        }
+
+        // Validate product/variant exists and get correct price (standardized to dollars)
+        if ($type === 'variant') {
+            $variant = ProductVariant::find($item_id);
+            if (!$variant || !$variant->is_active) {
+                return ['valid' => false, 'message' => 'Product variant not found or inactive'];
+            }
+
+            // Verify variant belongs to the specified product if product_id is provided
+            if ($product_id && $variant->product_id !== $product_id) {
+                return ['valid' => false, 'message' => 'Variant does not belong to the specified product'];
+            }
+
+            $correctPrice = $variant->getFinalPrice(); // Returns dollars (from cents)
+        } else {
+            $product = Product::find($item_id);
+            if (!$product || !$product->is_active) {
+                return ['valid' => false, 'message' => 'Product not found or inactive'];
+            }
+            $correctPrice = $product->price; // Returns dollars (from price_cents via accessor)
+        }
+
+        return [
+            'valid' => true,
+            'correct_price' => $correctPrice,
+            'message' => 'Valid item data'
+        ];
+    }
+
+    // NEW METHOD: Validate cart items and correct prices
+    static private function validateAndCorrectCartItems($cart_items)
+    {
+        $corrected_items = [];
+
+        foreach ($cart_items as $item) {
+            // First sanitize the item
+            $sanitized_item = CartValidationService::sanitizeCartItem($item);
+
+            // Validate required fields
+            if (!isset($sanitized_item['product_id'], $sanitized_item['quantity'], $sanitized_item['unit_amount'])) {
+                continue; // Skip invalid items
+            }
+
+            // Get correct price from database
+            $correctPrice = self::getCorrectItemPrice($sanitized_item);
+            if ($correctPrice === null) {
+                continue; // Skip items that no longer exist
+            }
+
+            // Correct the item data
+            $sanitized_item['unit_amount'] = $correctPrice;
+            $sanitized_item['total_amount'] = $correctPrice * $sanitized_item['quantity'];
+
+            $corrected_items[] = $sanitized_item;
+        }
+
+        return $corrected_items;
+    }
+
+    // NEW METHOD: Get correct price from database (standardized to dollars)
+    static private function getCorrectItemPrice($item)
+    {
+        if (isset($item['variant_id']) && $item['variant_id']) {
+            $variant = ProductVariant::find($item['variant_id']);
+            if ($variant && $variant->is_active) {
+                // Use getFinalPrice() which returns dollars (converted from cents)
+                return $variant->getFinalPrice();
+            }
+            return null;
+        }
+
+        $product = Product::find($item['product_id']);
+        if ($product && $product->is_active) {
+            // Use price attribute which returns dollars (converted from price_cents)
+            return $product->price;
+        }
+        return null;
+    }
+
+    // Get item data (product or variant) - STANDARDIZED PRICING (dollars)
     static protected function getItemData($item_id, $type, $product_id = null)
     {
         if ($type === 'variant') {
@@ -257,7 +368,8 @@ class CartManagement {
                     'variant_id' => $variant->id,
                     'name' => $variant->name ?: $variant->product->name,
                     'image' => $variant->image_url ?: ($variant->images[0] ?? $variant->product->images[0] ?? null),
-                    'price' => $variant->final_price_in_dollars, // Use simplified final_price accessor
+                    'price' => $variant->getFinalPrice(), // Standardized: returns dollars
+                    'product_slug' => $variant->product->slug,
                 ];
             }
         } else {
@@ -268,7 +380,8 @@ class CartManagement {
                     'variant_id' => null,
                     'name' => $product->name,
                     'image' => $product->images[0] ?? null,
-                    'price' => $product->price,
+                    'price' => $product->price, // Standardized: returns dollars (from price_cents)
+                    'product_slug' => $product->slug,
                 ];
             }
         }
@@ -276,38 +389,24 @@ class CartManagement {
         return null;
     }
 
-    // Validate inventory before adding to cart (simplified with SKU-based tracking)
+    // Validate inventory before adding to cart (using unified InventoryService)
     static public function validateInventory($product_id, $variant_id = null, $quantity = 1)
     {
+        $product = Product::find($product_id);
+        if (!$product) {
+            return ['valid' => false, 'message' => 'Product not found'];
+        }
+
+        $variant = null;
         if ($variant_id) {
             $variant = ProductVariant::find($variant_id);
             if (!$variant) {
                 return ['valid' => false, 'message' => 'Product variant not found'];
             }
-
-            // Simplified inventory check - always track inventory for variants
-            if ($variant->stock_quantity < $quantity) {
-                return [
-                    'valid' => false,
-                    'message' => "Insufficient stock. Available: {$variant->stock_quantity}, Requested: {$quantity}"
-                ];
-            }
-        } else {
-            $product = Product::find($product_id);
-            if (!$product) {
-                return ['valid' => false, 'message' => 'Product not found'];
-            }
-
-            // For products without variants, check product stock
-            if ($product->stock_quantity < $quantity) {
-                return [
-                    'valid' => false,
-                    'message' => "Insufficient stock. Available: {$product->stock_quantity}, Requested: {$quantity}"
-                ];
-            }
         }
 
-        return ['valid' => true, 'message' => 'Stock available'];
+        // Use unified InventoryService for validation
+        return \App\Services\InventoryService::validateQuantity($product, $quantity, $variant);
     }
 
     // ========================================

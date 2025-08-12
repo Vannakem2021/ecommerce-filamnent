@@ -42,7 +42,6 @@ class EnhancedProductSeeder extends Seeder
                 'track_inventory' => true,
                 'is_active' => true,
                 'is_featured' => true,
-                'in_stock' => true,
                 'on_sale' => true,
                 'images' => ['products/smartphone-pro.jpg'],
             ],

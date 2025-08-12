@@ -9,12 +9,16 @@ use Filament\Forms;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Group;
 use Filament\Forms\Components\MarkdownEditor;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Illuminate\Database\Eloquent\Model;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Filters\Filter;
@@ -22,7 +26,8 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
+
+use Illuminate\Support\Collection;
 
 class ProductResource extends Resource
 {
@@ -110,21 +115,249 @@ class ProductResource extends Resource
                             ->reorderable()
                     ]),
 
-                    Section::make('Variants Configuration (Simplified System)')->schema([
-                        Toggle::make('has_variants')
-                            ->label('Has Variants')
-                            ->helperText('Enable if this product has multiple variants (color, size, etc.). Use the Variants tab below to manage individual variants with JSON options.')
-                            ->live(),
+                    Section::make('Product Variants')
+                        ->description('Configure product variants for different color and storage combinations')
+                        ->icon('heroicon-o-squares-2x2')
+                        ->schema([
+                            Toggle::make('has_variants')
+                                ->label('Enable Color + Storage Variants')
+                                ->helperText('Turn on to create multiple variants with different colors and storage options')
+                                ->live()
+                                ->inline(false)
+                            ->afterStateUpdated(function ($state, $set, ?Model $record) {
+                                if ($record && $record->exists) {
+                                    // Handle transition for existing products
+                                    if ($state && !$record->has_variants) {
+                                        // Converting to variant product - create default variant
+                                        \App\Services\ProductVariantTransitionService::convertToVariantProduct($record);
 
-                        Forms\Components\Textarea::make('attributes')
-                            ->label('Product Attributes (JSON)')
-                            ->helperText('Optional: Add product-level attributes as JSON (e.g., {"Brand": "Apple", "Screen Size": "6.1 inch"})')
-                            ->rows(3)
-                            ->visible(fn ($get) => $get('has_variants'))
-                            ->placeholder('{"Brand": "Apple", "Screen Size": "6.1 inch", "Operating System": "iOS"}'),
-                    ]),
+                                        // Set default variant data in form
+                                        $defaultVariant = $record->variants()->where('is_default', true)->first();
+                                        if ($defaultVariant) {
+                                            $set('variants', [[
+                                                'color' => $defaultVariant->getColor(),
+                                                'storage' => $defaultVariant->getStorage(),
+                                                'override_price_dollars' => $defaultVariant->getFinalPrice(),
+                                                'stock_quantity' => $defaultVariant->stock_quantity,
+                                                'is_active' => $defaultVariant->is_active,
+                                                'sku' => $defaultVariant->sku,
+                                                'options' => $defaultVariant->options,
+                                                'override_price' => $defaultVariant->override_price,
+                                            ]]);
+                                        }
+                                    } elseif (!$state && $record->has_variants) {
+                                        // Converting to simple product - consolidate variants
+                                        \App\Services\ProductVariantTransitionService::convertToSimpleProduct($record);
+                                        $set('variants', []);
+                                    }
+                                }
+                            }),
 
-                    Section::make('SEO Data')->schema([
+                            Forms\Components\Placeholder::make('variant_help')
+                                ->label('💡 Variant System Guide')
+                                ->content(new \Illuminate\Support\HtmlString('
+                                    <div class="space-y-2 text-sm">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-green-600">✅</span>
+                                            <span>Perfect for phones, laptops, tablets with multiple options</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-green-600">✅</span>
+                                            <span>Each variant has unique Color + Storage combination</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-green-600">✅</span>
+                                            <span>Individual pricing and stock management per variant</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-red-600">⚠️</span>
+                                            <span><strong>Required:</strong> You must add at least one variant with specific color and storage</span>
+                                        </div>
+                                        <div class="mt-3 p-3 bg-blue-50 rounded-lg">
+                                            <strong>Examples:</strong> iPhone (Black 128GB, Blue 256GB), MacBook (Silver 512GB, Space Gray 1TB)
+                                        </div>
+                                    </div>
+                                '))
+                                ->visible(fn ($get) => $get('has_variants')),
+
+                            Forms\Components\Placeholder::make('transition_warning')
+                                ->label('⚠️ Important: Mode Transition')
+                                ->content(function (?Model $record) {
+                                    if (!$record || !$record->exists) {
+                                        return new \Illuminate\Support\HtmlString('
+                                            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                                                <strong>New Product:</strong> Choose whether this product will have variants before saving.
+                                            </div>
+                                        ');
+                                    }
+
+                                    $conflicts = \App\Services\ProductVariantTransitionService::validateAndFixConflicts($record);
+
+                                    if ($conflicts['has_conflicts']) {
+                                        $issuesList = implode('<br>• ', $conflicts['issues']);
+                                        return new \Illuminate\Support\HtmlString('
+                                            <div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm">
+                                                <strong>⚠️ Conflicts Detected:</strong><br>
+                                                • ' . $issuesList . '<br><br>
+                                                <strong>Auto-fix available:</strong> Save the form to automatically resolve these conflicts.
+                                            </div>
+                                        ');
+                                    }
+
+                                    return new \Illuminate\Support\HtmlString('
+                                        <div class="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                                            <strong>✅ No Conflicts:</strong> Product pricing and inventory are properly configured.
+                                        </div>
+                                    ');
+                                })
+                                ->visible(fn (?Model $record) => $record && $record->exists),
+                        ])
+                        ->collapsed(false),
+
+                    // Dynamic Variant Creation Section
+                    Section::make('Create Product Variants')
+                        ->description('Add specific color and storage combinations with individual pricing and inventory')
+                        ->icon('heroicon-o-swatch')
+                        ->schema([
+                            Repeater::make('variants')
+                                ->label('Product Variants')
+                                ->helperText('Add multiple color and storage combinations for this product')
+                                ->afterStateHydrated(function (Repeater $component, ?Model $record) {
+                                    if ($record && $record->exists && $record->has_variants) {
+                                        // Load existing variants and convert them to form data
+                                        $variants = $record->variants()->get();
+                                        $variantData = [];
+
+                                        foreach ($variants as $variant) {
+                                            $options = is_string($variant->options) ? json_decode($variant->options, true) : $variant->options;
+                                            $variantData[] = [
+                                                'id' => $variant->id,
+                                                'color' => $options['Color'] ?? '',
+                                                'storage' => $options['Storage'] ?? '',
+                                                'override_price_dollars' => $variant->override_price ? $variant->override_price / 100 : null,
+                                                'stock_quantity' => $variant->stock_quantity,
+                                                'is_active' => $variant->is_active,
+                                                'sku' => $variant->sku,
+                                                'options' => $variant->options,
+                                                'override_price' => $variant->override_price,
+                                            ];
+                                        }
+
+                                        $component->state($variantData);
+                                    }
+                                })
+                                ->schema([
+                                    Forms\Components\Grid::make(2)
+                                        ->schema([
+                                            Forms\Components\Select::make('color')
+                                                ->label('Color')
+                                                ->options([
+                                                    'Black' => 'Black',
+                                                    'White' => 'White',
+                                                    'Silver' => 'Silver',
+                                                    'Space Gray' => 'Space Gray',
+                                                    'Starlight' => 'Starlight',
+                                                    'Midnight' => 'Midnight',
+                                                    'Gold' => 'Gold',
+                                                    'Blue' => 'Blue',
+                                                    'Red' => 'Red',
+                                                    'Green' => 'Green',
+                                                    'Purple' => 'Purple',
+                                                    'Pink' => 'Pink',
+                                                    'Yellow' => 'Yellow',
+                                                    'Phantom Black' => 'Phantom Black',
+                                                    'Cream' => 'Cream',
+                                                    'Lavender' => 'Lavender',
+                                                    'Mint' => 'Mint',
+                                                    'Platinum Silver' => 'Platinum Silver',
+                                                    'Graphite' => 'Graphite',
+                                                    'Natural Titanium' => 'Natural Titanium',
+                                                    'Blue Titanium' => 'Blue Titanium',
+                                                    'White Titanium' => 'White Titanium',
+                                                    'Black Titanium' => 'Black Titanium',
+                                                ])
+                                                ->searchable()
+                                                ->required()
+                                                ->live()
+                                                ->afterStateUpdated(function ($state, $set, $get) {
+                                                    self::updateVariantData($state, $get('storage'), $set, $get);
+                                                })
+                                                ->dehydrated(false), // Don't save this field directly
+
+                                            Forms\Components\Select::make('storage')
+                                                ->label('Storage')
+                                                ->options([
+                                                    '64GB' => '64GB',
+                                                    '128GB' => '128GB',
+                                                    '256GB' => '256GB',
+                                                    '512GB' => '512GB',
+                                                    '1TB' => '1TB',
+                                                    '2TB' => '2TB',
+                                                ])
+                                                ->searchable()
+                                                ->required()
+                                                ->live()
+                                                ->afterStateUpdated(function ($state, $set, $get) {
+                                                    self::updateVariantData($get('color'), $state, $set, $get);
+                                                })
+                                                ->dehydrated(false), // Don't save this field directly
+                                        ]),
+
+                                    Forms\Components\Grid::make(3)
+                                        ->schema([
+                                            Forms\Components\TextInput::make('override_price_dollars')
+                                                ->label('Price ($)')
+                                                ->helperText('Specific price for this variant')
+                                                ->numeric()
+                                                ->step(0.01)
+                                                ->prefix('$')
+                                                ->required()
+                                                ->afterStateUpdated(function ($state, $set) {
+                                                    $set('override_price', $state ? round($state * 100) : null);
+                                                })
+                                                ->dehydrated(false),
+
+                                            Forms\Components\TextInput::make('stock_quantity')
+                                                ->label('Stock')
+                                                ->numeric()
+                                                ->required()
+                                                ->default(10)
+                                                ->minValue(0),
+
+                                            Forms\Components\Toggle::make('is_active')
+                                                ->label('Active')
+                                                ->default(true),
+                                        ]),
+
+                                    Forms\Components\TextInput::make('sku')
+                                        ->label('SKU')
+                                        ->placeholder('Auto-generated')
+                                        ->helperText('Will be auto-generated based on color and storage')
+                                        ->disabled()
+                                        ->dehydrated(),
+
+                                    Forms\Components\Hidden::make('options'),
+                                    Forms\Components\Hidden::make('override_price'),
+                                ])
+                                ->addActionLabel('Add Variant')
+                                ->reorderable(false)
+                                ->collapsible()
+                                ->itemLabel(fn (array $state): ?string =>
+                                    isset($state['color'], $state['storage'])
+                                        ? "{$state['color']} - {$state['storage']}"
+                                        : 'New Variant'
+                                )
+                                ->defaultItems(0)
+                                ->minItems(0)
+                        ])
+                        ->visible(fn ($get) => $get('has_variants'))
+                        ->collapsed(false),
+
+                    Section::make('SEO & Meta Data')
+                        ->description('Optimize your product for search engines')
+                        ->icon('heroicon-o-magnifying-glass')
+                        ->collapsed(true)
+                        ->schema([
 
                         TextInput::make('meta_title')
                             ->maxLength(255),
@@ -140,28 +373,36 @@ class ProductResource extends Resource
 
                 Group::make()->schema([
 
-                    Section::make('Pricing')->schema([
+                    Section::make('Pricing & Cost Management')
+                        ->description('Set pricing information in US Dollars')
+                        ->icon('heroicon-o-currency-dollar')
+                        ->schema([
                         TextInput::make('price')
-                            ->label('Selling Price')
+                            ->label('Base Price (USD)')
                             ->numeric()
                             ->required()
-                            ->prefix('INR')
+                            ->prefix('$')
                             ->step(0.01)
-                            ->helperText('Current selling price'),
+                            ->default(0)
+                            ->helperText(fn (Get $get): string =>
+                                $get('has_variants')
+                                    ? 'Base price for variants (variants can override this price). Set to 0 if all variants have override prices.'
+                                    : 'Current selling price in US Dollars'
+                            ),
 
                         TextInput::make('compare_price')
-                            ->label('Compare Price')
+                            ->label('Compare Price (USD)')
                             ->numeric()
-                            ->prefix('INR')
+                            ->prefix('$')
                             ->step(0.01)
-                            ->helperText('Original/MSRP price for showing discounts'),
+                            ->helperText('Original/MSRP price in US Dollars for showing discounts'),
 
                         TextInput::make('cost_price')
-                            ->label('Cost Price')
+                            ->label('Cost Price (USD)')
                             ->numeric()
-                            ->prefix('INR')
+                            ->prefix('$')
                             ->step(0.01)
-                            ->helperText('Cost price for profit calculations'),
+                            ->helperText('Cost price in US Dollars for profit calculations'),
                     ]),
 
                     Section::make('Inventory Management')->schema([
@@ -171,17 +412,23 @@ class ProductResource extends Resource
                             ->required()
                             ->default(0)
                             ->minValue(0)
-                            ->helperText('Current stock quantity'),
+                            ->rules(['integer', 'min:0'])
+                            ->helperText('Current stock quantity (only used for products without variants)')
+                            ->hidden(fn (Get $get): bool => $get('has_variants')),
 
-                        Select::make('stock_status')
+                        // Stock status is now calculated automatically - no manual editing
+                        Placeholder::make('stock_status_display')
                             ->label('Stock Status')
-                            ->options([
-                                'in_stock' => 'In Stock',
-                                'out_of_stock' => 'Out of Stock',
-                                'back_order' => 'Back Order',
-                            ])
-                            ->required()
-                            ->default('in_stock'),
+                            ->content(function (?Model $record): string {
+                                if (!$record) {
+                                    return 'Not calculated yet';
+                                }
+
+                                $status = \App\Services\InventoryService::getStockStatus($record);
+                                return ucfirst(str_replace('_', ' ', $status));
+                            })
+                            ->hidden(fn (Get $get): bool => $get('has_variants'))
+                            ->helperText('Stock status is calculated automatically based on stock quantity'),
 
                         TextInput::make('low_stock_threshold')
                             ->label('Low Stock Threshold')
@@ -195,6 +442,22 @@ class ProductResource extends Resource
                             ->label('Track Inventory')
                             ->default(true)
                             ->helperText('Enable inventory tracking for this product'),
+
+                        // Display calculated stock info for products with variants
+                        Placeholder::make('calculated_stock_info')
+                            ->label('Stock Information')
+                            ->content(function (?Model $record): string {
+                                if (!$record || !$record->has_variants) {
+                                    return '';
+                                }
+
+                                $totalStock = \App\Services\InventoryService::getTotalStock($record);
+                                $status = \App\Services\InventoryService::getStockStatus($record);
+
+                                return "Total Stock: {$totalStock} | Status: " . ucfirst(str_replace('_', ' ', $status)) .
+                                       " | Managed by variants";
+                            })
+                            ->visible(fn (Get $get): bool => $get('has_variants')),
                     ]),
 
                     Section::make('Associations')->schema([
@@ -214,10 +477,6 @@ class ProductResource extends Resource
 
                     Section::make('Status')->schema([
 
-                        Toggle::make('in_stock')
-                            ->required()
-                            ->default(true),
-
                         Toggle::make('is_active')
                             ->required()
                             ->default(true),
@@ -234,81 +493,200 @@ class ProductResource extends Resource
             ])->columns(3);
     }
 
+    /**
+     * Update variant data when color or storage changes
+     */
+    public static function updateVariantData($color, $storage, $set, $get): void
+    {
+        if ($color && $storage) {
+            // Auto-generate SKU
+            $colorCode = strtoupper(substr($color, 0, 3));
+            $storageCode = str_replace('GB', '', $storage);
+
+            // Try to get product SKU from form, fallback to placeholder
+            $productSku = $get('../../sku') ?: $get('sku') ?: 'PROD';
+            $sku = "{$productSku}-{$colorCode}-{$storageCode}";
+
+            $set('sku', $sku);
+
+            // Set options
+            $set('options', [
+                'Color' => $color,
+                'Storage' => $storage
+            ]);
+        }
+    }
+
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
+                Tables\Columns\ImageColumn::make('images')
+                    ->label('Image')
+                    ->circular()
+                    ->stacked()
+                    ->limit(1)
+                    ->limitedRemainingText()
+                    ->getStateUsing(fn ($record) => $record->images ? (is_array($record->images) ? $record->images[0] ?? null : $record->images) : null)
+                    ->defaultImageUrl(url('/images/placeholder-product.png'))
+                    ->size(40),
+
                 Tables\Columns\TextColumn::make('name')
-                    ->searchable(),
+                    ->label('Product')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('medium')
+                    ->description(fn ($record) => $record->sku)
+                    ->wrap(),
 
                 Tables\Columns\TextColumn::make('category.name')
-                    ->sortable(),
+                    ->label('Category')
+                    ->sortable()
+                    ->badge()
+                    ->color('gray'),
 
                 Tables\Columns\TextColumn::make('brand.name')
-                    ->sortable(),
+                    ->label('Brand')
+                    ->sortable()
+                    ->badge()
+                    ->color('indigo'),
+
+                Tables\Columns\TextColumn::make('variants_count')
+                    ->label('Variants')
+                    ->getStateUsing(function ($record) {
+                        if (!$record->has_variants) {
+                            return 'Simple Product';
+                        }
+                        $count = $record->variants()->count();
+                        return $count . ' variant' . ($count !== 1 ? 's' : '');
+                    })
+                    ->badge()
+                    ->color(fn ($record) => $record->has_variants ? 'success' : 'gray')
+                    ->icon(fn ($record) => $record->has_variants ? 'heroicon-o-squares-2x2' : 'heroicon-o-cube'),
 
                 Tables\Columns\TextColumn::make('price')
-                    ->label('Selling Price')
-                    ->money('INR')
-                    ->sortable(),
+                    ->label('Price')
+                    ->money('USD')
+                    ->sortable()
+                    ->description(fn ($record) => $record->has_variants ? 'Base price' : 'Selling price')
+                    ->weight('medium'),
 
                 Tables\Columns\TextColumn::make('compare_price')
                     ->label('Compare Price')
-                    ->money('INR')
+                    ->money('USD')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                Tables\Columns\TextColumn::make('stock_quantity')
+                Tables\Columns\TextColumn::make('stock_info')
                     ->label('Stock')
-                    ->sortable()
-                    ->badge()
-                    ->color(fn ($record) => $record->is_low_stock ? 'warning' : 'success'),
+                    ->sortable(false)
+                    ->getStateUsing(function ($record) {
+                        $totalStock = \App\Services\InventoryService::getTotalStock($record);
+                        $status = \App\Services\InventoryService::getStockStatus($record);
 
-                Tables\Columns\TextColumn::make('stock_status')
+                        return [
+                            'quantity' => $totalStock,
+                            'status' => $status,
+                            'display' => $totalStock . ' units'
+                        ];
+                    })
+                    ->formatStateUsing(fn ($state) => $state['display'] ?? '0 units')
+                    ->badge()
+                    ->color(function ($record) {
+                        $status = \App\Services\InventoryService::getStockStatus($record);
+                        return match ($status) {
+                            'in_stock' => 'success',
+                            'low_stock' => 'warning',
+                            'out_of_stock' => 'danger',
+                            default => 'gray'
+                        };
+                    })
+                    ->icon(function ($record) {
+                        $status = \App\Services\InventoryService::getStockStatus($record);
+                        return match ($status) {
+                            'in_stock' => 'heroicon-o-check-circle',
+                            'low_stock' => 'heroicon-o-exclamation-triangle',
+                            'out_of_stock' => 'heroicon-o-x-circle',
+                            default => 'heroicon-o-question-mark-circle'
+                        };
+                    })
+                    ->tooltip(function ($record) {
+                        $status = \App\Services\InventoryService::getStockStatus($record);
+                        return match ($status) {
+                            'in_stock' => 'In Stock',
+                            'low_stock' => 'Low Stock - Consider restocking',
+                            'out_of_stock' => 'Out of Stock',
+                            default => 'Unknown Status'
+                        };
+                    }),
+
+                Tables\Columns\TextColumn::make('calculated_status')
                     ->label('Status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'in_stock' => 'success',
-                        'out_of_stock' => 'danger',
-                        'back_order' => 'warning',
+                    ->getStateUsing(function ($record) {
+                        return \App\Services\InventoryService::getStockStatus($record);
+                    })
+                    ->color(function ($record) {
+                        $status = \App\Services\InventoryService::getStockStatus($record);
+                        return match ($status) {
+                            'in_stock' => 'success',
+                            'low_stock' => 'warning',
+                            'out_of_stock' => 'danger',
+                            default => 'gray'
+                        };
                     })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'in_stock' => 'In Stock',
+                        'low_stock' => 'Low Stock',
                         'out_of_stock' => 'Out of Stock',
-                        'back_order' => 'Back Order',
+                        default => ucfirst(str_replace('_', ' ', $state))
                     }),
 
-                Tables\Columns\IconColumn::make('is_active')
-                    ->label('Active')
-                    ->boolean()
-                    ->trueIcon('heroicon-o-check-circle')
-                    ->falseIcon('heroicon-o-x-circle')
-                    ->trueColor('success')
-                    ->falseColor('danger'),
+                Tables\Columns\TextColumn::make('product_status')
+                    ->label('Product Status')
+                    ->getStateUsing(function ($record) {
+                        $statuses = [];
 
-                Tables\Columns\IconColumn::make('is_featured')
-                    ->label('Featured')
-                    ->boolean()
-                    ->trueIcon('heroicon-o-star')
-                    ->falseIcon('heroicon-o-star')
-                    ->trueColor('warning')
-                    ->falseColor('gray'),
+                        if (!$record->is_active) {
+                            $statuses[] = 'Inactive';
+                        } else {
+                            $statuses[] = 'Active';
+                        }
 
-                Tables\Columns\IconColumn::make('in_stock')
-                    ->label('In Stock')
-                    ->boolean()
-                    ->trueIcon('heroicon-o-check-circle')
-                    ->falseIcon('heroicon-o-x-circle')
-                    ->trueColor('success')
-                    ->falseColor('danger'),
+                        if ($record->is_featured) {
+                            $statuses[] = 'Featured';
+                        }
 
-                Tables\Columns\IconColumn::make('on_sale')
-                    ->label('On Sale')
-                    ->boolean()
-                    ->trueIcon('heroicon-o-tag')
-                    ->falseIcon('heroicon-o-tag')
-                    ->trueColor('info')
-                    ->falseColor('gray'),
+                        if ($record->on_sale) {
+                            $statuses[] = 'On Sale';
+                        }
+
+                        return $statuses;
+                    })
+                    ->formatStateUsing(function ($state) {
+                        return collect($state)->join(' • ');
+                    })
+                    ->badge()
+                    ->color(function ($record) {
+                        if (!$record->is_active) return 'danger';
+                        if ($record->is_featured) return 'warning';
+                        if ($record->on_sale) return 'info';
+                        return 'success';
+                    })
+                    ->icon(function ($record) {
+                        if (!$record->is_active) return 'heroicon-o-x-circle';
+                        if ($record->is_featured) return 'heroicon-o-star';
+                        if ($record->on_sale) return 'heroicon-o-tag';
+                        return 'heroicon-o-check-circle';
+                    }),
+
+                Tables\Columns\TextColumn::make('sku')
+                    ->label('SKU')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->copyable()
+                    ->copyMessage('SKU copied!')
+                    ->fontFamily('mono'),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -320,6 +698,8 @@ class ProductResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
+            ->defaultSort('created_at', 'desc')
+            ->striped()
             ->filters([
                 SelectFilter::make('category')
                     ->relationship('category', 'name')
@@ -336,13 +716,15 @@ class ProductResource extends Resource
                         Forms\Components\Grid::make(2)
                             ->schema([
                                 Forms\Components\TextInput::make('price_from')
-                                    ->label('Min Price (₹)')
+                                    ->label('Min Price ($)')
                                     ->numeric()
+                                    ->prefix('$')
                                     ->placeholder('0'),
                                 Forms\Components\TextInput::make('price_to')
-                                    ->label('Max Price (₹)')
+                                    ->label('Max Price ($)')
                                     ->numeric()
-                                    ->placeholder('10000'),
+                                    ->prefix('$')
+                                    ->placeholder('1000'),
                             ])
                     ])
                     ->query(function (Builder $query, array $data): Builder {
@@ -407,9 +789,53 @@ class ProductResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\BulkAction::make('activate')
+                        ->label('Activate Selected')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('success')
+                        ->action(function (Collection $records) {
+                            $records->each->update(['is_active' => true]);
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Products Activated')
+                                ->body($records->count() . ' products have been activated.')
+                                ->success()
+                                ->send();
+                        }),
+
+                    Tables\Actions\BulkAction::make('deactivate')
+                        ->label('Deactivate Selected')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
+                        ->action(function (Collection $records) {
+                            $records->each->update(['is_active' => false]);
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Products Deactivated')
+                                ->body($records->count() . ' products have been deactivated.')
+                                ->warning()
+                                ->send();
+                        })
+                        ->requiresConfirmation(),
+
+                    Tables\Actions\BulkAction::make('feature')
+                        ->label('Mark as Featured')
+                        ->icon('heroicon-o-star')
+                        ->color('warning')
+                        ->action(function (Collection $records) {
+                            $records->each->update(['is_featured' => true]);
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('Products Featured')
+                                ->body($records->count() . ' products have been marked as featured.')
+                                ->success()
+                                ->send();
+                        }),
+
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->requiresConfirmation(),
                 ]),
-            ])->defaultSort('created_at', 'desc');
+            ]);
     }
 
     public static function getRelations(): array

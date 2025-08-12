@@ -26,7 +26,7 @@
                                 <div class="flex flex-col md:flex-row gap-6">
                                     <div class="flex-shrink-0">
                                         @if($item['image'])
-                                            <img src="{{ Storage::url($item['image']) }}" alt="{{ $item['name'] }}" class="w-32 h-32 object-cover rounded-xl">
+                                            <img src="{{ asset('storage/' . $item['image']) }}" alt="{{ $item['name'] }}" class="w-32 h-32 object-cover rounded-xl">
                                         @else
                                             <div class="w-32 h-32 bg-gray-200 rounded-xl flex items-center justify-center">
                                                 <i class="fas fa-image text-gray-400 text-2xl"></i>
@@ -36,7 +36,13 @@
                                     <div class="flex-1">
                                         <div class="flex flex-col md:flex-row md:items-center justify-between mb-4">
                                             <div>
-                                                <h3 class="text-lg font-semibold text-gray-900 mb-1">{{ $item['name'] }}</h3>
+                                                @if(isset($item['product_slug']) && $item['product_slug'])
+                                                    <a href="{{ route('product-details', $item['product_slug']) }}" wire:navigate class="text-lg font-semibold text-gray-900 hover:text-teal-600 transition-colors mb-1 block">
+                                                        {{ $item['name'] }}
+                                                    </a>
+                                                @else
+                                                    <h3 class="text-lg font-semibold text-gray-900 mb-1">{{ $item['name'] }}</h3>
+                                                @endif
                                                 <p class="text-sm text-gray-600 mb-1">
                                                     Electronics • SKU: {{ 'PRD-' . str_pad($item['product_id'], 3, '0', STR_PAD_LEFT) }}
                                                 </p>
@@ -104,26 +110,7 @@
                         @endforeach
                     </div>
 
-                    <!-- Promo Code Section -->
-                    <div class="bg-white rounded-2xl shadow-md p-6 mt-8">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">Promo Code</h3>
-                        <div class="flex gap-4">
-                            <div class="flex-1">
-                                <input
-                                    wire:model="promo_code"
-                                    type="text"
-                                    placeholder="Enter promo code"
-                                    class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-custom-teal-500 focus:border-custom-teal-500 transition-all duration-200"
-                                />
-                            </div>
-                            <button
-                                wire:click="applyPromoCode"
-                                class="bg-custom-teal-600 hover:bg-custom-teal-700 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-200"
-                            >
-                                Apply
-                            </button>
-                        </div>
-                    </div>
+
                 @else
                     <!-- Empty Cart State -->
                     <div class="bg-white rounded-2xl shadow-md p-12 text-center">
@@ -145,39 +132,43 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                             @foreach($recommended_products as $product)
                                 <div class="group border border-gray-200 rounded-2xl overflow-hidden hover:shadow-md transition-all duration-300">
-                                    <div class="relative">
-                                        @if($product->images && count($product->images) > 0)
-                                            @php
-                                                $images = is_string($product->images) ? json_decode($product->images, true) : $product->images;
-                                                $firstImage = is_array($images) ? ($images[0] ?? null) : null;
-                                            @endphp
-                                            @if($firstImage)
-                                                <img src="{{ Storage::url($firstImage) }}" alt="{{ $product->name }}" class="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300">
+                                    <a href="{{ route('product-details', $product->slug) }}" wire:navigate class="block">
+                                        <div class="relative">
+                                            @if($product->images && count($product->images) > 0)
+                                                @php
+                                                    $images = is_string($product->images) ? json_decode($product->images, true) : $product->images;
+                                                    $firstImage = is_array($images) ? ($images[0] ?? null) : null;
+                                                @endphp
+                                                @if($firstImage)
+                                                    <img src="{{ asset('storage/' . $firstImage) }}" alt="{{ $product->name }}" class="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300">
+                                                @else
+                                                    <div class="w-full h-40 bg-gray-200 flex items-center justify-center">
+                                                        <i class="fas fa-image text-gray-400 text-2xl"></i>
+                                                    </div>
+                                                @endif
                                             @else
                                                 <div class="w-full h-40 bg-gray-200 flex items-center justify-center">
                                                     <i class="fas fa-image text-gray-400 text-2xl"></i>
                                                 </div>
                                             @endif
-                                        @else
-                                            <div class="w-full h-40 bg-gray-200 flex items-center justify-center">
-                                                <i class="fas fa-image text-gray-400 text-2xl"></i>
-                                            </div>
-                                        @endif
-                                        @if($product->on_sale)
-                                            <span class="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                                                Sale
-                                            </span>
-                                        @endif
-                                        @if($product->is_featured)
-                                            <span class="absolute top-3 right-3 bg-custom-teal-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                                                Featured
-                                            </span>
-                                        @endif
-                                    </div>
+                                            @if($product->on_sale)
+                                                <span class="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                                                    Sale
+                                                </span>
+                                            @endif
+                                            @if($product->is_featured)
+                                                <span class="absolute top-3 right-3 bg-custom-teal-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                                                    Featured
+                                                </span>
+                                            @endif
+                                        </div>
+                                    </a>
                                     <div class="p-4">
-                                        <h4 class="font-semibold text-gray-900 mb-2 group-hover:text-custom-teal-700 transition-colors">
-                                            {{ $product->name }}
-                                        </h4>
+                                        <a href="{{ route('product-details', $product->slug) }}" wire:navigate>
+                                            <h4 class="font-semibold text-gray-900 mb-2 group-hover:text-custom-teal-700 transition-colors">
+                                                {{ $product->name }}
+                                            </h4>
+                                        </a>
                                         <div class="flex items-center mb-2">
                                             <div class="flex text-yellow-400">
                                                 @for($i = 1; $i <= 5; $i++)
@@ -228,12 +219,6 @@
                                 <span>Tax</span>
                                 <span class="font-medium">${{ number_format($this->getTax(), 2) }}</span>
                             </div>
-                            @if($discount_amount > 0)
-                                <div class="flex justify-between text-green-600">
-                                    <span>Discount (WEEKEND20)</span>
-                                    <span class="font-medium">-${{ number_format($discount_amount, 2) }}</span>
-                                </div>
-                            @endif
                         </div>
 
                         <div class="border-t border-gray-200 pt-4 mb-6">
@@ -245,9 +230,26 @@
                             </div>
                         </div>
 
-                        <a href="{{ route('checkout') }}" wire:navigate class="w-full bg-custom-teal-600 hover:bg-custom-teal-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 mb-4 block text-center">
-                            Proceed to Checkout
-                        </a>
+                        @auth
+                            <a href="{{ route('checkout') }}" wire:navigate onclick="console.log('Checkout button clicked:', '{{ route('checkout') }}'); return true;" class="w-full bg-custom-teal-600 hover:bg-custom-teal-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 mb-4 block text-center">
+                                Proceed to Checkout
+                            </a>
+
+                            <!-- Alternative checkout button without wire:navigate for debugging -->
+                            <a href="{{ route('checkout') }}" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 mb-2 block text-center text-sm">
+                                Alternative Checkout (Direct Link)
+                            </a>
+                        @else
+                            <div class="mb-4">
+                                <p class="text-sm text-gray-600 mb-3 text-center">Please log in to proceed with checkout</p>
+                                <a href="{{ route('login') }}" wire:navigate class="w-full bg-custom-teal-600 hover:bg-custom-teal-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 block text-center">
+                                    Login to Checkout
+                                </a>
+                                <p class="text-xs text-gray-500 mt-2 text-center">
+                                    Don't have an account? <a href="{{ route('register') }}" wire:navigate class="text-custom-teal-600 hover:text-custom-teal-700">Sign up here</a>
+                                </p>
+                            </div>
+                        @endauth
 
                         <div class="text-center">
                             <button class="text-custom-teal-600 hover:text-custom-teal-700 font-medium transition-colors">
